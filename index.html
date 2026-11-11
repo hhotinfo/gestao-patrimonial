@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Gestão Patrimonial</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: cabeçalho → abas dos módulos → faixa de totais → filtros → tabela; ficha de edição em painel lateral.
+   Mesmo sistema visual do Controle de IPTU e do Controle de Seguros. */
+:root{
+  --bg:#f5f6f3; --surface:#ffffff; --ink:#1c2420; --muted:#5d6a63; --line:#dde2dc;
+  --accent:#1f5f4a; --accent-soft:#e3efe9;
+  --ok:#2d7a3e; --ok-soft:#e2f2e5; --warn:#a86a00; --warn-soft:#fbefd7;
+  --bad:#b3261e; --bad-soft:#fbe4e2; --mute-soft:#eceeeb;
+  --f-display:"Archivo",system-ui,sans-serif; --f-body:"Archivo",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#121614; --surface:#1a201d; --ink:#e6ebe7; --muted:#9aa69f; --line:#2c3531;
+  --accent:#6cc4a1; --accent-soft:#1f3a30; --ok:#7fd18f; --ok-soft:#1e3324; --warn:#e5b45a; --warn-soft:#3a2e15;
+  --bad:#f08a80; --bad-soft:#3d1f1c; --mute-soft:#252b28; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121614; --surface:#1a201d; --ink:#e6ebe7; --muted:#9aa69f; --line:#2c3531;
+  --accent:#6cc4a1; --accent-soft:#1f3a30; --ok:#7fd18f; --ok-soft:#1e3324; --warn:#e5b45a; --warn-soft:#3a2e15;
+  --bad:#f08a80; --bad-soft:#3d1f1c; --mute-soft:#252b28; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.45}
+.wrap{max-width:1320px;margin:0 auto;padding-block:24px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:20px}
+header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:12px}
+h1{font-family:var(--f-display);font-size:26px;font-weight:700;margin:0;letter-spacing:-.01em;text-wrap:balance}
+.sub{color:var(--muted);margin:2px 0 0}
+.due{font-family:var(--f-mono);font-size:13px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+.due b{font-weight:500}
+.tabs{display:flex;flex-wrap:wrap;gap:0 4px;border-bottom:1px solid var(--line)}
+.tabs a{padding:9px 14px;color:var(--muted);text-decoration:none;font-weight:600;border-bottom:2px solid transparent;margin-bottom:-1px;border-radius:6px 6px 0 0}
+.tabs a:hover{color:var(--ink)}
+.tabs a[aria-current="page"]{color:var(--accent);border-bottom-color:var(--accent)}
+.tabs small{font-family:var(--f-mono);font-weight:400;font-size:12px;margin-left:4px;color:var(--muted)}
+.banner{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;padding:10px 14px;border:1px dashed var(--warn);background:var(--warn-soft);border-radius:8px}
+.banner p{margin:0;min-width:0;flex:1 1 280px}
+section.view{display:flex;flex-direction:column;gap:20px}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.kpi{background:var(--surface);padding:14px 16px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.kpi span{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.kpi strong{font-family:var(--f-mono);font-weight:500;font-size:20px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi small{color:var(--muted);font-size:12px}
+.kpi.saldo strong{color:var(--bad)} .kpi.pago strong{color:var(--ok)}
+.bar{height:6px;border-radius:3px;background:var(--mute-soft);overflow:hidden;margin-top:4px}
+.bar i{display:block;height:100%;background:var(--accent)}
+.kpi.pago .bar i{background:var(--ok)}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+input,select,textarea,button{font:inherit;color:inherit}
+.tools input,.tools select{padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);min-width:0;max-width:100%}
+.tools input{flex:1 1 220px}
+.btn{padding:8px 14px;border-radius:6px;border:1px solid var(--line);background:var(--surface);cursor:pointer;font-weight:500}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.btn.danger{color:var(--bad);border-color:var(--bad)}
+.btn.sm{padding:3px 9px;font-size:12px}
+.btn:focus-visible,.lk:focus-visible,.tabs a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,tr:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.tablebox{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:980px}
+#t_bens{min-width:1120px} #t_titulares{min-width:780px}
+th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;background:var(--surface);cursor:pointer;user-select:none}
+th.num,td.num{text-align:right}
+td.num,td.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:13px}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--accent-soft)}
+tr.off td{color:var(--muted)}
+tr.off td.nome{text-decoration:line-through}
+td.nome{font-weight:500;white-space:normal;min-width:230px}
+td.nome small,td small{display:block;color:var(--muted);font-weight:400;font-size:12px}
+tfoot td{font-weight:600;background:var(--mute-soft);border-bottom:0}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;font-family:var(--f-body)}
+.pill+.pill{margin-left:4px}
+.p-ok{background:var(--ok-soft);color:var(--ok)} .p-warn{background:var(--warn-soft);color:var(--warn)}
+.p-bad{background:var(--bad-soft);color:var(--bad)} .p-acc{background:var(--accent-soft);color:var(--accent)}
+.p-mute{background:var(--mute-soft);color:var(--muted)}
+.tag{display:inline-block;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--warn);border:1px solid var(--warn);border-radius:4px;padding:0 4px;margin-left:6px;font-weight:600;text-decoration:none}
+.zero{color:var(--muted)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:16px;align-items:start}
+.stack{display:flex;flex-direction:column;gap:16px;min-width:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px;min-width:0}
+.panel h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 12px;font-weight:600}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:6px 0;border-bottom:1px dashed var(--line)}
+.row:last-child{border-bottom:0}
+.row .v{font-family:var(--f-mono);font-variant-numeric:tabular-nums;text-align:right}
+.row .bar{grid-column:1/-1}
+.row small{color:var(--muted)}
+.lk{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:2px 12px;align-items:center;width:100%;padding:8px 6px;border:0;border-bottom:1px dashed var(--line);background:none;text-align:left;cursor:pointer;border-radius:4px}
+.lk:last-child{border-bottom:0}
+.lk:hover{background:var(--accent-soft)}
+.lk .d,.lk .v{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:13px}
+.lk .t{min-width:0;overflow-wrap:anywhere}
+.lk .t small{display:block;color:var(--muted);font-size:12px}
+.empty{padding:40px 16px;text-align:center;color:var(--muted)}
+.panel .empty{padding:20px 8px}
+.note{font-size:12px;color:var(--muted);margin:0;max-width:95ch}
+/* painel de edição */
+.scrim{position:fixed;inset:0;background:rgba(10,15,12,.4);z-index:20}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(480px,100%);background:var(--surface);z-index:21;border-left:1px solid var(--line);display:flex;flex-direction:column;
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);padding-right:env(safe-area-inset-right,0px)}
+.drawer header{padding:16px 20px;border-bottom:1px solid var(--line);align-items:center}
+.drawer h3{margin:0;font-size:17px}
+.form{padding:16px 20px;overflow-y:auto;display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:1;align-content:start}
+.form label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);min-width:0}
+.form .full{grid-column:1/-1}
+.form input,.form select,.form textarea{padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font-size:14px;min-width:0;width:100%}
+.form input.money{font-family:var(--f-mono)}
+.form fieldset{grid-column:1/-1;border:1px solid var(--line);border-radius:8px;padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:0;min-width:0}
+.form legend{font-size:12px;font-weight:600;padding:0 4px;color:var(--ink)}
+.calc{grid-column:1/-1;font-family:var(--f-mono);font-size:13px;display:flex;justify-content:space-between;padding:8px 10px;background:var(--mute-soft);border-radius:6px}
+.linked{grid-column:1/-1;border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:6px}
+.linked h4{margin:6px 0 0;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:flex;justify-content:space-between;align-items:center;gap:8px}
+.linked .lk{grid-template-columns:minmax(0,1fr) auto auto}
+.actions{padding:12px 20px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
+.actions .left{margin-right:auto}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:8px 16px;border-radius:6px;z-index:30;font-size:13px;max-width:calc(100% - 32px)}
+@media (max-width:720px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.kpi strong{font-size:17px}h1{font-size:22px}
+  .lk{grid-template-columns:auto minmax(0,1fr) auto}.lk .pill{grid-column:2/-1;justify-self:start}.linked .lk .pill{grid-column:1/-1}}
+@media (max-width:480px){.kpi{padding:12px}.kpi strong{font-size:15px;white-space:normal;overflow-wrap:anywhere}}
+@media (prefers-reduced-motion:no-preference){.drawer{animation:slide .18s ease-out}@keyframes slide{from{transform:translateX(24px);opacity:.6}}}
+
+html{-webkit-text-size-adjust:100%}body{margin:0}[hidden]{display:none!important}img{max-width:100%}
+.login{max-width:380px;margin:12vh auto;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:24px;display:flex;flex-direction:column;gap:12px}
+.login h1{font-size:22px}
+.login input{padding:10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font-size:15px}
+.login .err{color:var(--bad);font-size:13px;min-height:1em;margin:0}
+.userbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.userbar .note{margin:0}
+.kpi.aviso strong{color:var(--warn)}
+tr.alert td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
+tr.late td:first-child{box-shadow:inset 3px 0 0 var(--bad)}
+td.wrap2{white-space:normal;min-width:160px;max-width:220px}
+#t_seguros{min-width:1180px} #t_iptu{min-width:1100px}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+</head><body>
+
+<div id="loginBox" class="wrap" hidden><form class="login" id="loginForm">
+  <h1>Gestão Patrimonial</h1><p class="sub">Entre com o mesmo e-mail e senha do Controle de IPTU.</p>
+  <input id="lEmail" type="email" placeholder="E-mail" autocomplete="username" required>
+  <input id="lPass" type="password" placeholder="Senha" autocomplete="current-password" required>
+  <button class="btn primary" id="lBtn">Entrar</button><p class="err" id="lErr"></p>
+</form></div>
+<div id="cfgBox" class="wrap" hidden><div class="login"><h1>Configuração pendente</h1><p class="sub">Preencha SUPABASE_URL e SUPABASE_KEY no arquivo config.js.</p></div></div>
+<div class="wrap" id="app" hidden>
+  <header>
+    <div>
+      <h1>Gestão Patrimonial</h1>
+      <p class="sub">Bens, titulares, IPTU e seguros em um só cadastro</p>
+    </div>
+    <div class="userbar"><div class="due">Posição em <b id="hoje">—</b></div><span class="note" id="who"></span><button class="btn" id="logout" type="button">Sair</button></div>
+  </header>
+
+  <nav class="tabs" aria-label="Módulos">
+    <a href="#painel" id="tab_painel" aria-current="page">Painel</a>
+    <a href="#bens" id="tab_bens">Bens<small id="n_bens"></small></a>
+    <a href="#iptu" id="tab_iptu">IPTU<small id="n_iptu"></small></a>
+    <a href="#seguros" id="tab_seguros">Seguros<small id="n_seguros"></small></a>
+    <a href="#titulares" id="tab_titulares">Titulares<small id="n_titulares"></small></a>
+  </nav>
+
+  <section class="view" id="v_painel">
+    <div class="kpis" id="k_painel" aria-label="Totais"></div>
+    <div class="empty panel" id="e_painel">Carregando o patrimônio…</div>
+    <div class="grid2" id="painelBody" hidden>
+      <section class="panel"><h2>Próximos vencimentos</h2><div id="agenda"></div></section>
+      <div class="stack">
+        <section class="panel"><h2>Patrimônio por tipo de bem</h2><div id="byTipo"></div></section>
+        <section class="panel"><h2>Patrimônio por titular</h2><div id="byTit"></div></section>
+      </div>
+    </div>
+    <p class="note">Valor de referência de cada bem: o valor de mercado; na falta dele, o declarado no Imposto de Renda; na falta dos dois, o de aquisição. Sempre multiplicado pelo percentual de titularidade. Bens vendidos ou baixados não entram nos totais. Os vencimentos listam o IPTU a vencer em até 90 dias e os seguros vencidos ou com fim de vigência em até 90 dias.</p>
+  </section>
+  <section class="view" id="v_bens" hidden></section>
+  <section class="view" id="v_iptu" hidden></section>
+  <section class="view" id="v_seguros" hidden></section>
+  <section class="view" id="v_titulares" hidden></section>
+</div>
+
+<div id="drawerRoot" hidden>
+  <div class="scrim" id="scrim"></div>
+  <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dTitle">
+    <header><h3 id="dTitle">Registro</h3><button class="btn" id="dClose" type="button">Fechar</button></header>
+    <form class="form" id="frm"></form>
+    <div class="actions">
+      <span class="left" id="delBox"></span>
+      <button class="btn" id="cancel" type="button">Cancelar</button>
+      <button class="btn primary" id="save" type="button">Salvar</button>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const lc=s=>String(s??"").toLowerCase();
+const brl=v=>(+v||0).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+const money=v=>"R$ "+brl(v);
+const dash='<span class="zero">–</span>';
+const cell=v=>(+v?brl(v):dash);
+const r2=n=>Math.round(n*100)/100;
+const num=s=>{if(typeof s==="number")return isFinite(s)?s:0;if(s==null)return 0;s=String(s).trim().replace(/[R$\s]/g,"");if(!s)return 0;
+  if(s.includes(","))s=s.replace(/\./g,"").replace(",",".");else if(/^\d{1,3}(\.\d{3})+$/.test(s))s=s.replace(/\./g,"");
+  const n=parseFloat(s);return isNaN(n)?0:r2(n)};
+const p2=n=>String(n).padStart(2,"0");
+const iso=d=>d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate());
+const TODAY=iso(new Date()),YEAR=new Date().getFullYear();
+const dBR=s=>s?String(s).split("-").reverse().join("/"):"";
+const dCurto=s=>s?s.slice(8,10)+"/"+s.slice(5,7)+"/"+s.slice(2,4):"";
+const days=s=>Math.round((Date.parse(s+"T00:00:00")-Date.parse(TODAY+"T00:00:00"))/864e5);
+const inDays=n=>n===0?"hoje":n>0?`em ${n} dia${n>1?"s":""}`:`há ${-n} dia${n<-1?"s":""}`;
+function shift(s,months){if(!s)return"";const[y,m,d]=s.split("-").map(Number);const dt=new Date(y,m-1+months,1);const last=new Date(dt.getFullYear(),dt.getMonth()+1,0).getDate();dt.setDate(Math.min(d,last));return iso(dt)}
+const sum=(l,f)=>l.reduce((a,r)=>a+f(r),0);
+const pl=(n,a,b)=>n+" "+(n===1?a:b);
+const uniq=a=>[...new Set(a.filter(Boolean))].sort((x,y)=>x.localeCompare(y,"pt-BR"));
+const pill=(t,tone)=>`<span class="pill p-${tone||"mute"}">${esc(t)}</span>`;
+$("hoje").textContent=dBR(TODAY);
+
+const TIPOS=["Imóvel","Veículo","Embarcação","Participação societária","Aplicação financeira","Outro bem"];
+const IDENT={"Imóvel":["Matrícula","Sequencial na prefeitura"],"Veículo":["Placa","RENAVAM"],"Embarcação":["Inscrição na Capitania","Nome ou modelo"],
+  "Participação societária":["CNPJ da empresa","Quotas ou ações"],"Aplicação financeira":["Instituição","Conta ou produto"],"Outro bem":["Identificação","Complemento"]};
+const ST_BEM=["Ativo","À venda","Vendido","Baixado"];
+const ST_IPTU=["Pendente","Pago","Parcelado","Contestado","Isento","Cancelado"];
+const CATS=["Embarcação","Veículo","Imóvel","Documento","Serviço","Outro"];
+const ST_SEG=["Ativo","Em cotação","Sem seguro","Cancelado","Transferido"];
+const SIT_SEG=["Vigente","Renovar","Vencido","Em cotação","Sem seguro","Cancelado","Transferido"];
+const TONE={"Ativo":"ok","À venda":"warn","Vendido":"mute","Baixado":"mute","Pendente":"warn","Atrasado":"bad","Pago":"ok","Parcelado":"acc","Contestado":"bad","Isento":"mute","Cancelado":"mute",
+  "Vigente":"ok","Renovar":"warn","Vencido":"bad","Em cotação":"acc","Sem seguro":"bad","Transferido":"mute"};
+
+const S={titulares:[],bens:[],iptu:[],seguros:[]};
+const KEYS=Object.keys(S);
+let sb=null,cur="painel",ed=null,loaded=false,loadMsg="Carregando…";
+const by=(k,id)=>S[k].find(r=>r.id===id);
+const bem=id=>by("bens",id);
+const tn=id=>(by("titulares",id)||{}).nome||"Sem titular";
+const bn=id=>(bem(id)||{}).nome||"";
+const titDe=r=>(bem(r.bemId)||{}).titularId||"";
+const titOpts=()=>S.titulares.slice().sort((a,b)=>lc(a.nome)<lc(b.nome)?-1:1).map(t=>[t.id,t.nome]);
+
+// regras de cálculo
+const pct=b=>b.perc===""||b.perc==null?100:num(b.perc);
+const pctf=n=>n.toLocaleString("pt-BR",{maximumFractionDigits:2})+"%";
+const vref=b=>num(b.vMerc)||num(b.vIR)||num(b.vAq);
+const parte=b=>r2(vref(b)*pct(b)/100);
+const ativo=b=>b.status!=="Vendido"&&b.status!=="Baixado";
+const iTot=r=>r2(num(r.valor)+num(r.itbi)+num(r.taxas));
+const iFora=r=>r.status==="Isento"||r.status==="Cancelado";
+const iSal=r=>iFora(r)?0:Math.max(0,r2(iTot(r)-num(r.valorPag)));
+const iSt=r=>{const s=r.status||"Pendente";return s==="Pendente"&&iSal(r)>0&&(r.venc?r.venc<TODAY:num(r.ano)<YEAR)?"Atrasado":s};
+const alertaOf=r=>r.alerta||shift(r.vigFim,-1);
+const sOff=r=>r.status==="Cancelado"||r.status==="Transferido";
+const sSit=r=>{const s=r.status||"Ativo";if(s!=="Ativo")return s;if(!r.vigFim)return"Vigente";if(TODAY>r.vigFim)return"Vencido";const a=alertaOf(r);return a&&TODAY>=a?"Renovar":"Vigente"};
+const sRuim=r=>["Vencido","Sem seguro"].includes(sSit(r));
+function pend(b){
+  const out=[],ab=S.iptu.filter(r=>r.bemId===b.id&&iSal(r)>0);
+  if(ab.length)out.push(pill("IPTU "+brl(sum(ab,iSal)),ab.some(r=>iSt(r)==="Atrasado")?"bad":"warn"));
+  const sg=S.seguros.filter(r=>r.bemId===b.id&&!sOff(r)),ruim=sg.find(sRuim),ren=sg.find(r=>sSit(r)==="Renovar");
+  if(ruim)out.push(pill(sSit(ruim)==="Sem seguro"?"Sem seguro":"Seguro vencido","bad"));
+  else if(ren)out.push(pill("Renovar seguro "+dBR(ren.vigFim).slice(0,5),"warn"));
+  return out.join("")||dash;
+}
+
+// definição das telas de lista
+const V={
+  bens:{add:"+ Novo bem",ph:"Buscar bem, matrícula, sequencial, placa ou observação",sort:0,
+    text:r=>[r.nome,r.ident,r.ident2,r.local,r.obs,tn(r.titularId)].join(" "),
+    filters:[{k:"tipo",first:"Todos os tipos",vals:()=>TIPOS,get:r=>r.tipo},{k:"tit",first:"Todos os titulares",vals:titOpts,get:r=>r.titularId||""},
+      {k:"st",first:"Todas as situações",vals:()=>ST_BEM,get:r=>r.status||"Ativo"}],
+    rowCls:r=>ativo(r)?"":"off",
+    cols:[
+      {h:"Bem",cls:"nome",s:r=>lc(r.nome),c:r=>`${esc(r.nome)}<small>${esc(tn(r.titularId))}${r.ident?" · "+esc(r.ident):""}${r.ident2?" · "+esc(r.ident2):""}</small>`},
+      {h:"Tipo e local",s:r=>lc(r.tipo)+lc(r.local),c:r=>esc(r.tipo)+(r.local?`<small>${esc(r.local)}</small>`:"")},
+      {h:"Aquisição",cls:"num",s:r=>num(r.vAq),c:r=>cell(r.vAq)+(r.dataAq?`<small>${dBR(r.dataAq)}</small>`:"")},
+      {h:"Declarado no IR",cls:"num",s:r=>num(r.vIR),c:r=>cell(r.vIR)},
+      {h:"Mercado",cls:"num",s:r=>num(r.vMerc),c:r=>cell(r.vMerc)},
+      {h:"Titularidade",cls:"num",s:pct,c:r=>pctf(pct(r))},
+      {h:"Parte do titular",cls:"num",s:parte,c:r=>`<b>${cell(parte(r))}</b>`},
+      {h:"Pendências",s:r=>pend(r),c:pend},
+      {h:"Situação",s:r=>r.status||"Ativo",c:r=>pill(r.status||"Ativo",TONE[r.status||"Ativo"])}],
+    foot:l=>{const a=l.filter(ativo);return[pl(l.length,"bem","bens"),"",brl(sum(a,r=>num(r.vAq))),brl(sum(a,r=>num(r.vIR))),brl(sum(a,r=>num(r.vMerc))),"",brl(sum(a,parte)),"",""]},
+    kpis:l=>{const a=l.filter(ativo);return[{l:"Patrimônio de referência",v:money(sum(a,parte))},{l:"Valor de mercado dos bens",v:money(sum(a,r=>num(r.vMerc)))},
+      {l:"Declarado no IR",v:money(sum(a,r=>num(r.vIR)))},{l:"Bens ativos",v:a.length,sub:pl(l.length-a.length,"vendido ou baixado","vendidos ou baixados")}]},
+    empty:"Nenhum bem cadastrado ainda. Use “+ Novo bem” para adicionar o primeiro.",
+    note:"Clique em um bem para abrir a ficha: nela ficam os lançamentos de IPTU e os seguros ligados a ele."},
+  iptu:{add:"+ Novo lançamento",ph:"Buscar imóvel, sequencial ou observação",sort:3,
+    text:r=>{const b=bem(r.bemId)||{};return[b.nome,b.ident2,b.local,r.obs,r.ano,tn(b.titularId)].join(" ")},
+    filters:[{k:"ano",first:"Todos os exercícios",vals:()=>uniq(S.iptu.map(r=>String(r.ano||""))).reverse(),get:r=>String(r.ano||"")},
+      {k:"mun",first:"Todos os municípios",vals:()=>uniq(S.iptu.map(r=>(bem(r.bemId)||{}).local)),get:r=>(bem(r.bemId)||{}).local||""},
+      {k:"tit",first:"Todos os titulares",vals:titOpts,get:titDe},
+      {k:"st",first:"Todos os status",vals:()=>["Pendente","Atrasado",...ST_IPTU.slice(1)],get:iSt}],
+    rowCls:r=>iFora(r)?"off":"",
+    cols:[
+      {h:"Imóvel",cls:"nome",s:r=>lc(bn(r.bemId)),c:r=>{const b=bem(r.bemId)||{};return`${esc(b.nome||"Bem removido")}<small>${esc(tn(b.titularId))}${b.ident2?" · seq. "+esc(b.ident2):""}${r.obs?" · "+esc(r.obs):""}</small>`}},
+      {h:"Município",s:r=>lc((bem(r.bemId)||{}).local),c:r=>esc((bem(r.bemId)||{}).local)||dash},
+      {h:"Exercício",cls:"mono",s:r=>num(r.ano),c:r=>esc(r.ano)},
+      {h:"Vencimento",cls:"mono",s:r=>r.venc||String(r.ano),c:r=>dBR(r.venc)||dash},
+      {h:"IPTU",cls:"num",s:r=>num(r.valor),c:r=>cell(r.valor)},
+      {h:"ITBI",cls:"num",s:r=>num(r.itbi),c:r=>cell(r.itbi)},
+      {h:"Taxas",cls:"num",s:r=>num(r.taxas),c:r=>cell(r.taxas)},
+      {h:"Total",cls:"num",s:iTot,c:r=>`<b>${cell(iTot(r))}</b>`},
+      {h:"Status",s:iSt,c:r=>pill(iSt(r),TONE[iSt(r)])},
+      {h:"Pago",cls:"num",s:r=>num(r.valorPag),c:r=>cell(r.valorPag)+(r.dataPag?`<small>${dBR(r.dataPag)}</small>`:"")},
+      {h:"Saldo",cls:"num",s:iSal,c:r=>cell(iSal(r))}],
+    foot:l=>{const a=l.filter(r=>!iFora(r));return[pl(l.length,"lançamento","lançamentos"),"","","",brl(sum(a,r=>num(r.valor))),brl(sum(a,r=>num(r.itbi))),brl(sum(a,r=>num(r.taxas))),brl(sum(a,iTot)),"",brl(sum(l,r=>num(r.valorPag))),brl(sum(l,iSal))]},
+    kpis:l=>{const T=sum(l.filter(r=>!iFora(r)),iTot),P=sum(l,r=>num(r.valorPag)),at=l.filter(r=>iSt(r)==="Atrasado"),Sd=sum(l,iSal);
+      return[{l:"Total a pagar",v:money(T)},{l:"Pago",v:money(P),cls:"pago",bar:T?Math.min(100,P/T*100):0},{l:"Saldo em aberto",v:money(Sd),cls:Sd?"saldo":""},
+        {l:"Em atraso",v:money(sum(at,iSal)),cls:at.length?"saldo":"",sub:pl(at.length,"lançamento","lançamentos")}]},
+    empty:"Nenhum lançamento de IPTU ainda. Cadastre um imóvel em Bens e use “+ Novo lançamento”.",
+    note:"Um lançamento por imóvel e por exercício. Dívida ativa de anos anteriores é o lançamento daquele exercício ainda com saldo. Pendente com vencimento passado, ou de exercício anterior, aparece como “Atrasado”. Isentos e cancelados (imóvel vendido, por exemplo) não entram no saldo."},
+  seguros:{add:"+ Novo seguro",ph:"Buscar produto, apólice, corretor ou observação",sort:7,
+    text:r=>[r.produto,r.apolice,r.corretor,r.seguradora,r.obs,r.pagamento,r.categoria,bn(r.bemId)].join(" "),
+    filters:[{k:"cat",first:"Todas as categorias",vals:()=>uniq(S.seguros.map(r=>r.categoria)),get:r=>r.categoria},
+      {k:"seg",first:"Todas as seguradoras",vals:()=>uniq(S.seguros.map(r=>r.seguradora)),get:r=>r.seguradora},
+      {k:"st",first:"Todas as situações",vals:()=>SIT_SEG,get:sSit}],
+    rowCls:r=>sOff(r)?"off":sSit(r)==="Renovar"?"alert":sRuim(r)?"late":"",
+    cols:[
+      {h:"Produto",cls:"nome",s:r=>lc(r.produto),c:r=>{const b=bn(r.bemId);return`${esc(r.produto)}<small>${esc([r.categoria,b&&b!==r.produto?"bem: "+b:"",r.obs].filter(Boolean).join(" · "))}</small>`}},
+      {h:"Situação",s:r=>SIT_SEG.indexOf(sSit(r)),c:r=>pill(sSit(r),TONE[sSit(r)])},
+      {h:"Seguradora",s:r=>lc(r.seguradora),c:r=>esc(r.seguradora)||dash},
+      {h:"Corretor",s:r=>lc(r.corretor),c:r=>esc(r.corretor)||dash},
+      {h:"Apólice",cls:"mono",s:r=>lc(r.apolice),c:r=>esc(r.apolice)||dash},
+      {h:"Prêmio",cls:"num",s:r=>num(r.premio),c:r=>cell(r.premio)},
+      {h:"Pagamento",cls:"wrap2",s:r=>lc(r.pagamento),c:r=>esc(r.pagamento)},
+      {h:"Vigência",cls:"mono",s:r=>r.vigFim||"9999",c:r=>r.vigFim?`${dCurto(r.vigIni)||"…"} a ${dCurto(r.vigFim)}`:dash},
+      {h:"Alerta de renovação",cls:"mono",s:r=>alertaOf(r)||"9999",c:r=>{const a=alertaOf(r);return a&&!sOff(r)?`${dCurto(a)}<small>${inDays(days(a))}</small>`:dash}}],
+    foot:l=>[pl(l.length,"item","itens"),"","","","",brl(sum(l.filter(r=>!sOff(r)),r=>num(r.premio))),"","",""],
+    kpis:l=>{const a=l.filter(r=>(r.status||"Ativo")==="Ativo"),rn=l.filter(r=>sSit(r)==="Renovar").length,vc=l.filter(sRuim).length;
+      return[{l:"Prêmios em vigor",v:money(sum(a,r=>num(r.premio)))},{l:"Renovar agora",v:rn,cls:rn?"aviso":""},{l:"Vencidos / sem seguro",v:vc,cls:vc?"saldo":""},{l:"Itens controlados",v:l.length}]},
+    empty:"Nenhum seguro cadastrado ainda. Use “+ Novo seguro” para adicionar o primeiro.",
+    note:"O alerta de renovação é, por padrão, um mês antes do fim da vigência. A partir do alerta o item aparece como “Renovar”; depois do fim da vigência, como “Vencido”. Cancelados e transferidos não entram no total de prêmios. Ligue cada seguro a um bem do cadastro para ele aparecer na ficha do bem."},
+  titulares:{add:"+ Novo titular",ph:"Buscar titular ou documento",sort:0,
+    text:r=>[r.nome,r.doc,r.obs].join(" "),
+    filters:[{k:"tipo",first:"Pessoas e empresas",vals:()=>["Pessoa física","Empresa"],get:r=>r.tipo}],
+    cols:[
+      {h:"Titular",cls:"nome",s:r=>lc(r.nome),c:r=>`${esc(r.nome)}${r.obs?`<small>${esc(r.obs)}</small>`:""}`},
+      {h:"Tipo",s:r=>lc(r.tipo),c:r=>esc(r.tipo)},
+      {h:"CPF / CNPJ",cls:"mono",s:r=>lc(r.doc),c:r=>esc(r.doc)||dash},
+      {h:"Bens ativos",cls:"num",s:r=>bensDe(r).length,c:r=>bensDe(r).length||dash},
+      {h:"Patrimônio",cls:"num",s:r=>sum(bensDe(r),parte),c:r=>`<b>${cell(sum(bensDe(r),parte))}</b>`},
+      {h:"IPTU em aberto",cls:"num",s:r=>sum(S.iptu.filter(i=>titDe(i)===r.id),iSal),c:r=>cell(sum(S.iptu.filter(i=>titDe(i)===r.id),iSal))},
+      {h:"Seguros ativos",cls:"num",s:r=>segDe(r),c:r=>segDe(r)||dash}],
+    empty:"Nenhum titular cadastrado ainda. Cadastre a pessoa física e cada empresa em nome de quem os bens estão.",
+    note:"Titular é em nome de quem o bem está: a pessoa física ou cada uma das empresas."}
+};
+function bensDe(t){return S.bens.filter(b=>b.titularId===t.id&&ativo(b))}
+function segDe(t){return S.seguros.filter(s=>!sOff(s)&&s.bemId&&titDe(s)===t.id).length}
+
+// definição das fichas
+const F={
+  titulares:{t:"titular",fields:[{k:"nome",l:"Nome ou razão social",full:1,req:1},{k:"tipo",l:"Tipo",opts:["Empresa","Pessoa física"]},{k:"doc",l:"CPF / CNPJ"},{k:"obs",l:"Observações",area:1,full:1}]},
+  bens:{t:"bem",fields:[{k:"nome",l:"Descrição do bem",full:1,req:1},{k:"tipo",l:"Tipo",opts:TIPOS},{k:"status",l:"Situação",opts:ST_BEM},
+    {k:"titularId",l:"Titular",ref:"titulares"},{k:"perc",l:"Titularidade (%)",num:1,def:100},
+    {k:"local",l:"Município ou localização",full:1},{k:"ident",l:"Matrícula"},{k:"ident2",l:"Sequencial na prefeitura"},
+    {k:"dataAq",l:"Data de aquisição",date:1,grp:"Valores"},{k:"vAq",l:"Valor de aquisição (R$)",money:1,grp:"Valores"},
+    {k:"vIR",l:"Declarado no IR (R$)",money:1,grp:"Valores"},{k:"vMerc",l:"Valor de mercado (R$)",money:1,grp:"Valores"},
+    {k:"dataAval",l:"Data da avaliação",date:1,grp:"Valores"},
+    {k:"obs",l:"Observações",area:1,full:1}]},
+  iptu:{t:"lançamento de IPTU",fields:[{k:"bemId",l:"Imóvel",ref:"imoveis",full:1,req:1},{k:"ano",l:"Exercício",num:1,def:YEAR},{k:"venc",l:"Vencimento",date:1},
+    {k:"valor",l:"IPTU (R$)",money:1},{k:"itbi",l:"ITBI (R$)",money:1},{k:"taxas",l:"Taxas e outros (R$)",money:1},{k:"status",l:"Status",opts:ST_IPTU},
+    {k:"dataPag",l:"Data",date:1,grp:"Pagamento"},{k:"valorPag",l:"Valor pago (R$)",money:1,grp:"Pagamento"},{calc:[["cTot","Total"],["cSal","Saldo"]]},
+    {k:"obs",l:"Observações",area:1,full:1}]},
+  seguros:{t:"seguro",fields:[{k:"produto",l:"Produto segurado",full:1,req:1},{k:"bemId",l:"Bem do cadastro",ref:"bens",full:1},
+    {k:"categoria",l:"Categoria",list:()=>uniq([...CATS,...S.seguros.map(r=>r.categoria)])},{k:"status",l:"Status",opts:ST_SEG},
+    {k:"seguradora",l:"Seguradora",list:()=>uniq(S.seguros.map(r=>r.seguradora))},{k:"corretor",l:"Corretor",list:()=>uniq(S.seguros.map(r=>r.corretor))},
+    {k:"apolice",l:"Apólice",full:1},{k:"premio",l:"Prêmio / parcela (R$)",money:1},{k:"segurado",l:"Importância segurada (R$)",money:1},
+    {k:"pagamento",l:"Forma de pagamento",full:1,ph:"Ex.: 6x débito em conta - início 13/07/26"},
+    {k:"vigIni",l:"Início",date:1,grp:"Vigência"},{k:"vigFim",l:"Fim (vencimento)",date:1,grp:"Vigência"},{k:"alerta",l:"Alerta de renovação",date:1,full:1,grp:"Vigência"},
+    {calc:[["cSit","Situação"],["cDias","Vencimento"]]},
+    {k:"obs",l:"Valor atualizado / observações",area:1,full:1}]}
+};
+
+// banco de dados (Supabase): tabela e colunas de cada cadastro
+const T={
+  titulares:["gp_titulares",{nome:"nome",tipo:"tipo",doc:"doc",obs:"obs"}],
+  bens:["gp_bens",{nome:"nome",tipo:"tipo",status:"status",titularId:"titular_id",perc:"perc",local:"local",ident:"ident",ident2:"ident2",dataAq:"data_aq",vAq:"v_aq",vIR:"v_ir",vMerc:"v_merc",dataAval:"data_aval",obs:"obs"}],
+  iptu:["gp_iptu",{bemId:"bem_id",ano:"ano",venc:"venc",valor:"valor",itbi:"itbi",taxas:"taxas",status:"status",dataPag:"data_pag",valorPag:"valor_pag",obs:"obs"}],
+  seguros:["gp_seguros",{produto:"produto",bemId:"bem_id",categoria:"categoria",status:"status",seguradora:"seguradora",corretor:"corretor",apolice:"apolice",premio:"premio",segurado:"segurado",pagamento:"pagamento",vigIni:"vig_ini",vigFim:"vig_fim",alerta:"alerta",obs:"obs"}]
+};
+const fld=(ent,k)=>F[ent].fields.find(f=>f.k===k)||{};
+function fromDb(ent,r){const o={id:r.id},m=T[ent][1];for(const k in m){const v=r[m[k]],f=fld(ent,k);o[k]=f.money||f.num?(+v||0):(v??"")}return o}
+function toDb(ent,d){const o={},m=T[ent][1];for(const k in m){const f=fld(ent,k);o[m[k]]=f.date||f.ref?(d[k]||null):d[k]}return o}
+async function load(ent){
+  const{data,error}=await sb.from(T[ent][0]).select("*");
+  if(error)throw error;
+  S[ent]=data.map(r=>fromDb(ent,r));
+}
+async function loadAll(){
+  try{await Promise.all(KEYS.map(load));loaded=true}
+  catch(e){loaded=false;loadMsg=e.code==="PGRST205"||e.code==="42P01"?"As tabelas deste sistema ainda não existem no Supabase. Rode o arquivo banco.sql no SQL Editor do projeto.":"Erro ao carregar: "+(e.message||e.code)}
+  render();
+}
+const rt={};
+function reload(ent){clearTimeout(rt[ent]);rt[ent]=setTimeout(async()=>{try{await load(ent);render()}catch(e){}},300)}
+function errMsg(e,ent){
+  if(e.code==="23505")return ent==="iptu"?"Já existe lançamento deste imóvel para este exercício.":"Já existe um registro com esse nome.";
+  if(e.code==="23503")return"Este registro está em uso em outro cadastro.";
+  return"Não foi possível concluir: "+(e.message||e.code);
+}
+
+// montagem das telas de lista
+["bens","iptu","seguros","titulares"].forEach(k=>{const v=V[k];v.dir=1;
+  $("v_"+k).innerHTML=`${v.kpis?`<div class="kpis" id="k_${k}" aria-label="Totais"></div>`:""}
+  <div class="tools"><input id="q_${k}" type="search" placeholder="${v.ph}" aria-label="Buscar">${v.filters.map(f=>`<select id="f_${k}_${f.k}" aria-label="${f.first}"><option value="">${f.first}</option></select>`).join("")}<button class="btn primary" id="add_${k}" type="button">${v.add}</button></div>
+  <div class="tablebox"><table id="t_${k}"><thead><tr>${v.cols.map((c,i)=>`<th data-i="${i}"${c.cls==="num"?' class="num"':""}>${c.h}</th>`).join("")}</tr></thead><tbody></tbody><tfoot></tfoot></table><div class="empty" id="e_${k}">Carregando…</div></div>
+  <p class="note">${v.note}</p>`;
+  const t=$("t_"+k);
+  t.tHead.addEventListener("click",e=>{const th=e.target.closest("th");if(!th)return;const i=+th.dataset.i;if(v.sort===i)v.dir*=-1;else{v.sort=i;v.dir=1}render()});
+  const open=e=>{const tr=e.target.closest("tr[data-id]");if(tr)openForm(k,by(k,tr.dataset.id))};
+  t.tBodies[0].addEventListener("click",open);
+  t.tBodies[0].addEventListener("keydown",e=>{if(e.key==="Enter")open(e)});
+  $("v_"+k).querySelector(".tools").addEventListener("input",render);
+  $("add_"+k).onclick=()=>openForm(k,null);
+});
+
+function fillSel(sel,vals,first){
+  const h=`<option value="">${first}</option>`+vals.map(v=>{const a=Array.isArray(v)?v:[v,v];return`<option value="${esc(a[0])}">${esc(a[1])}</option>`}).join("");
+  if(sel._h===h)return;const c=sel.value;sel._h=h;sel.innerHTML=h;sel.value=c;if(sel.value!==c)sel.value="";
+}
+function kpiHtml(list){return list.map(x=>`<div class="kpi ${x.cls||""}"><span>${x.l}</span><strong>${esc(x.v)}</strong>${x.bar!=null?`<div class="bar"><i style="width:${x.bar}%"></i></div>`:""}${x.sub?`<small>${esc(x.sub)}</small>`:""}</div>`).join("")}
+
+function renderView(k){
+  const v=V[k],t=$("t_"+k);
+  v.filters.forEach(f=>fillSel($("f_"+k+"_"+f.k),f.vals(),f.first));
+  const q=$("q_"+k).value.trim().toLowerCase();
+  const list=S[k].filter(r=>v.filters.every(f=>{const x=$("f_"+k+"_"+f.k).value;return!x||String(f.get(r)??"")===x})&&(!q||lc(v.text(r)).includes(q)));
+  const c=v.cols[v.sort];
+  list.sort((a,b)=>{const x=c.s(a),y=c.s(b);return(x>y?1:x<y?-1:0)*v.dir||(lc(a.nome||a.produto||bn(a.bemId))<lc(b.nome||b.produto||bn(b.bemId))?-1:1)});
+  t.tBodies[0].innerHTML=list.map(r=>`<tr tabindex="0" data-id="${esc(r.id)}" class="${v.rowCls?v.rowCls(r):""}">${v.cols.map(c=>`<td${c.cls?` class="${c.cls}"`:""}>${c.c(r)}</td>`).join("")}</tr>`).join("");
+  t.tFoot.innerHTML=v.foot&&list.length?"<tr>"+v.foot(list).map((x,i)=>`<td${v.cols[i].cls==="num"?' class="num"':""}>${x}</td>`).join("")+"</tr>":"";
+  const e=$("e_"+k);e.hidden=list.length>0;
+  e.textContent=!loaded?loadMsg:S[k].length?"Nada encontrado com esses filtros.":v.empty;
+  if(v.kpis)$("k_"+k).innerHTML=kpiHtml(v.kpis(list));
+}
+
+function group(el,key,label){
+  const m={},a=S.bens.filter(ativo),T=sum(a,parte);
+  a.forEach(b=>{const g=key(b);(m[g]=m[g]||{n:0,t:0});m[g].n++;m[g].t+=parte(b)});
+  $(el).innerHTML=Object.entries(m).sort((x,y)=>y[1].t-x[1].t||y[1].n-x[1].n).map(([g,v])=>`<div class="row"><div>${esc(label(g))} <small>· ${pl(v.n,"bem","bens")}</small></div>
+    <div class="v">${v.t?brl(v.t):dash} <small>${T?Math.round(v.t/T*100)+"%":""}</small></div><div class="bar"><i style="width:${T?v.t/T*100:0}%"></i></div></div>`).join("")||'<p class="note">Sem bens ativos.</p>';
+}
+function renderPainel(){
+  const a=S.bens.filter(ativo),ab=sum(S.iptu,iSal),sv=S.seguros.filter(r=>sSit(r)==="Renovar"||sRuim(r));
+  $("k_painel").innerHTML=kpiHtml([{l:"Patrimônio de referência",v:money(sum(a,parte))},{l:"Bens ativos",v:a.length,sub:pl(S.titulares.length,"titular","titulares")},
+    {l:"IPTU em aberto",v:money(ab),cls:ab?"saldo":""},{l:"Seguros a renovar ou vencidos",v:sv.length,cls:sv.length?"saldo":""}]);
+  const vazio=!KEYS.some(k=>S[k].length);
+  $("painelBody").hidden=vazio;$("e_painel").hidden=!vazio;
+  $("e_painel").textContent=!loaded?loadMsg:"Nenhum bem cadastrado ainda. Comece pela aba Titulares, depois cadastre os bens. Os lançamentos de IPTU e os seguros se ligam a cada bem.";
+  const at=S.iptu.filter(r=>iSt(r)==="Atrasado"),ag=[];
+  S.iptu.forEach(r=>{if(iSal(r)>0&&r.venc&&r.venc>=TODAY)ag.push({d:r.venc,e:"iptu",id:r.id,t:bn(r.bemId)||"Bem removido",s:"IPTU "+(r.ano||""),v:iSal(r)})});
+  S.seguros.forEach(r=>{if((r.status||"Ativo")==="Ativo"&&r.vigFim)ag.push({d:r.vigFim,e:"seguros",id:r.id,t:r.produto,s:"Seguro "+(r.seguradora||r.categoria||""),v:num(r.premio)})});
+  const lst=ag.filter(x=>days(x.d)<=90).sort((x,y)=>x.d<y.d?-1:1).slice(0,12);
+  $("agenda").innerHTML=(at.length?`<button type="button" class="lk" data-go="iptu"><span class="d">em atraso</span><span class="t">IPTU em atraso<small>${pl(at.length,"lançamento","lançamentos")} · ver na aba IPTU</small></span><span class="v">${brl(sum(at,iSal))}</span>${pill("atrasado","bad")}</button>`:"")+
+    lst.map(x=>{const d=days(x.d);return`<button type="button" class="lk" data-e="${x.e}" data-id="${esc(x.id)}"><span class="d">${dBR(x.d)}</span>
+    <span class="t">${esc(x.t)}<small>${esc(x.s)}</small></span><span class="v">${brl(x.v)}</span>${pill(inDays(d),d<0?"bad":d<=30?"warn":"mute")}</button>`}).join("")
+    ||'<div class="empty">Nada vence nos próximos 90 dias.</div>';
+  group("byTipo",b=>b.tipo||"Outro bem",g=>g);
+  group("byTit",b=>b.titularId||"",g=>tn(g));
+}
+function render(){
+  ["bens","iptu","seguros","titulares"].forEach(k=>$("n_"+k).textContent=loaded?S[k].length:"");
+  if(cur==="painel")renderPainel();else renderView(cur);
+}
+
+// navegação
+const NAMES=["painel","bens","iptu","seguros","titulares"];
+function route(n){
+  const h=typeof n==="string"?n:location.hash.slice(1);cur=NAMES.includes(h)?h:"painel";
+  NAMES.forEach(x=>{$("v_"+x).hidden=x!==cur;const a=$("tab_"+x);if(x===cur)a.setAttribute("aria-current","page");else a.removeAttribute("aria-current")});
+  render();
+}
+addEventListener("hashchange",route);
+$("agenda").addEventListener("click",e=>{const b=e.target.closest(".lk");if(!b)return;
+  if(b.dataset.go){location.hash="iptu";route("iptu");$("f_iptu_st").value="Atrasado";render()}else openForm(b.dataset.e,by(b.dataset.e,b.dataset.id))});
+
+// ficha de edição
+function refOpts(f,v){
+  let l,first="— selecione —";
+  if(f.ref==="titulares")l=titOpts();
+  else{l=S.bens.filter(b=>f.ref==="bens"||b.tipo==="Imóvel"||b.id===v).sort((a,b)=>lc(a.nome)<lc(b.nome)?-1:1).map(b=>[b.id,b.nome]);if(f.ref==="bens")first="— sem bem vinculado —"}
+  return`<option value="">${first}</option>`+l.map(o=>`<option value="${esc(o[0])}"${o[0]===v?" selected":""}>${esc(o[1])}</option>`).join("");
+}
+function field(f,v){
+  const id="i_"+f.k;let c;
+  if(f.opts)c=`<select id="${id}">${(f.opts.includes(v)||!v?f.opts:[v,...f.opts]).map(o=>`<option${o===v?" selected":""}>${esc(o)}</option>`).join("")}</select>`;
+  else if(f.ref)c=`<select id="${id}">${refOpts(f,v)}</select>`;
+  else if(f.area)c=`<textarea id="${id}" rows="3">${esc(v)}</textarea>`;
+  else if(f.date)c=`<input id="${id}" type="date" value="${esc(v)}">`;
+  else if(f.money)c=`<input id="${id}" class="money" inputmode="decimal" value="${num(v)?brl(v):""}">`;
+  else if(f.num)c=`<input id="${id}" class="money" inputmode="decimal" value="${esc(String(v??"").replace(".",","))}">`;
+  else if(f.list)c=`<input id="${id}" list="dl_${f.k}" value="${esc(v)}"><datalist id="dl_${f.k}">${f.list().map(o=>`<option value="${esc(o)}">`).join("")}</datalist>`;
+  else c=`<input id="${id}" value="${esc(v)}"${f.ph?` placeholder="${esc(f.ph)}"`:""}>`;
+  return`<label${f.full?' class="full"':""}><span id="l_${f.k}">${f.l}</span>${c}</label>`;
+}
+function linked(b){
+  const row=(e,r,a,v,p)=>`<button type="button" class="lk" data-e="${e}" data-id="${esc(r.id)}"><span class="t">${esc(a)}</span><span class="v">${brl(v)}</span>${p}</button>`;
+  let h='<div class="linked">';
+  if(b.tipo==="Imóvel"){const l=S.iptu.filter(r=>r.bemId===b.id).sort((x,y)=>num(y.ano)-num(x.ano));
+    h+='<h4>IPTU deste imóvel<button type="button" class="btn sm" data-new="iptu">+ Lançamento</button></h4>'+
+      (l.map(r=>row("iptu",r,(r.ano||"")+(r.venc?" · venc. "+dBR(r.venc):"")+(r.obs?" · "+r.obs:""),iTot(r),pill(iSt(r),TONE[iSt(r)]))).join("")||'<p class="note">Nenhum lançamento de IPTU para este imóvel.</p>')}
+  const s=S.seguros.filter(r=>r.bemId===b.id).sort((x,y)=>(x.vigFim||"")<(y.vigFim||"")?1:-1);
+  h+='<h4>Seguros deste bem<button type="button" class="btn sm" data-new="seguros">+ Seguro</button></h4>'+
+    (s.map(r=>row("seguros",r,(r.seguradora||r.produto)+(r.vigFim?" · até "+dBR(r.vigFim):""),num(r.premio),pill(sSit(r),TONE[sSit(r)]))).join("")||'<p class="note">Nenhum seguro ligado a este bem.</p>');
+  return h+"</div>";
+}
+function openForm(ent,row,preset){
+  ed={ent,row:row||null};
+  const sp=F[ent],d={...(row||preset||{})};
+  if(ent==="seguros"&&row&&!d.alerta&&d.vigFim)d.alerta=shift(d.vigFim,-1);
+  $("dTitle").textContent=(row?"Editar ":"Novo ")+sp.t;
+  let h="",g=null;
+  sp.fields.forEach(f=>{
+    const fg=f.grp||null;
+    if(fg!==g){if(g)h+="</fieldset>";if(fg)h+=`<fieldset><legend>${fg}</legend>`;g=fg}
+    h+=f.calc?f.calc.map(c=>`<div class="calc"><span>${c[1]}</span><span id="${c[0]}">—</span></div>`).join(""):field(f,d[f.k]??f.def??"");
+  });
+  if(g)h+="</fieldset>";
+  if(ent==="bens"&&row)h+=linked(row);
+  $("frm").innerHTML=h;
+  const fs=$("frm").querySelector("fieldset");
+  if(ent==="iptu")fs.insertAdjacentHTML("beforeend",'<button type="button" class="btn" id="payAll" style="grid-column:1/-1">Marcar como pago (valor total)</button>');
+  if(ent==="seguros")fs.insertAdjacentHTML("beforeend",'<button type="button" class="btn" id="renew" style="grid-column:1/-1">Renovar por mais 1 ano</button>');
+  $("delBox").innerHTML=row?'<button class="btn danger" id="del" type="button">Excluir</button>':"";
+  if(row)$("del").onclick=askDelete;
+  hook();$("drawerRoot").hidden=false;
+  const first=$("frm").querySelector("input,select");if(first&&!row)first.focus();
+}
+function closeForm(){$("drawerRoot").hidden=true;ed=null}
+function formData(){
+  const d={};
+  F[ed.ent].fields.forEach(f=>{if(f.calc)return;const s=$("i_"+f.k).value.trim();d[f.k]=f.money?num(s):f.num?(s===""&&f.def!=null?f.def:num(s)):s});
+  return d;
+}
+function hook(e){
+  if(!ed)return;const id=e&&e.target.id;
+  if(ed.ent==="bens"){const n=IDENT[$("i_tipo").value]||IDENT["Outro bem"];$("l_ident").textContent=n[0];$("l_ident2").textContent=n[1]}
+  if(ed.ent==="iptu"){const d=formData();$("cTot").textContent=money(iTot(d));$("cSal").textContent=money(iSal(d))}
+  if(ed.ent==="seguros"){
+    if(id==="i_vigFim"&&e.target.value)$("i_alerta").value=shift(e.target.value,-1);
+    if(id==="i_bemId"&&e.target.value&&!$("i_produto").value.trim())$("i_produto").value=bn(e.target.value);
+    const d=formData(),st=sSit(d);$("cSit").innerHTML=pill(st,TONE[st]);
+    $("cDias").textContent=d.vigFim?`${dBR(d.vigFim)} · ${inDays(days(d.vigFim))}`:"sem data";
+  }
+}
+$("frm").addEventListener("input",hook);
+$("frm").addEventListener("submit",e=>{e.preventDefault();save()});
+$("frm").addEventListener("click",e=>{
+  const n=e.target.closest("[data-new]"),l=e.target.closest(".lk"),id=e.target.id;
+  if(n){const b=ed.row;openForm(n.dataset.new,null,n.dataset.new==="iptu"?{bemId:b.id}:{bemId:b.id,produto:b.nome,categoria:CATS.includes(b.tipo)?b.tipo:""})}
+  else if(l)openForm(l.dataset.e,by(l.dataset.e,l.dataset.id));
+  else if(id==="payAll"){const d=formData();$("i_valorPag").value=brl(iTot(d));$("i_status").value="Pago";if(!$("i_dataPag").value)$("i_dataPag").value=TODAY;hook()}
+  else if(id==="renew"){const fim=$("i_vigFim").value;if(!fim){toast("Informe primeiro o fim da vigência");$("i_vigFim").focus();return}
+    $("i_vigIni").value=fim;$("i_vigFim").value=shift(fim,12);$("i_alerta").value=shift($("i_vigFim").value,-1);$("i_status").value="Ativo";hook();
+    toast("Vigência avançada 1 ano. Confira o prêmio e salve.")}
+});
+$("dClose").onclick=$("cancel").onclick=$("scrim").onclick=closeForm;
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("drawerRoot").hidden)closeForm()});
+
+async function save(){
+  if(!sb||!ed)return;
+  const{ent,row}=ed,d=formData();
+  const miss=F[ent].fields.find(f=>f.req&&!d[f.k]);
+  if(miss){toast("Preencha: "+miss.l);$("i_"+miss.k).focus();return}
+  if(ent==="iptu"&&d.status==="Pago"&&!d.valorPag)d.valorPag=iTot(d);
+  if(ent==="seguros"){
+    if(d.vigIni&&d.vigFim&&d.vigFim<d.vigIni){toast("O fim da vigência está antes do início");$("i_vigFim").focus();return}
+    if(!d.alerta&&d.vigFim)d.alerta=shift(d.vigFim,-1);
+  }
+  $("save").disabled=true;
+  const tb=sb.from(T[ent][0]),res=row?await tb.update(toDb(ent,d)).eq("id",row.id):await tb.insert(toDb(ent,d));
+  $("save").disabled=false;
+  if(res.error){toast(errMsg(res.error,ent));return}
+  toast(row?"Alterações salvas":"Registro adicionado");closeForm();
+  try{await load(ent)}catch(e){}render();
+}
+function askDelete(){
+  const{ent,row}=ed;let msg="Excluir mesmo?";
+  if(ent==="titulares"){const n=S.bens.filter(b=>b.titularId===row.id).length;
+    if(n){$("delBox").innerHTML=`<span class="note">Este titular tem ${pl(n,"bem","bens")}. Passe-os para outro titular antes de excluir.</span>`;return}}
+  if(ent==="bens"){const n=S.iptu.filter(r=>r.bemId===row.id).length,s=S.seguros.filter(r=>r.bemId===row.id).length;
+    if(n||s)msg=`Excluir o bem${n?" e "+pl(n,"lançamento","lançamentos")+" de IPTU":""}?${s?" Os seguros ligados a ele ficam sem vínculo.":""}`}
+  $("delBox").innerHTML=`<span class="note">${msg} </span><button class="btn danger" id="delYes" type="button">Sim, excluir</button> <button class="btn" id="delNo" type="button">Não</button>`;
+  $("delNo").onclick=()=>openForm(ent,row);
+  $("delYes").onclick=async()=>{$("delYes").disabled=true;
+    const{error}=await sb.from(T[ent][0]).delete().eq("id",row.id);
+    if(error){toast(errMsg(error,ent));if($("delYes"))$("delYes").disabled=false;return}
+    toast("Registro excluído");closeForm();
+    try{await Promise.all((ent==="bens"?["bens","iptu","seguros"]:[ent]).map(load))}catch(e){}render()};
+}
+let tt;function toast(m){const t=$("toast");t.textContent=m;t.hidden=false;clearTimeout(tt);tt=setTimeout(()=>t.hidden=true,3200)}
+$("save").onclick=save;
+document.querySelector(".tabs").addEventListener("click",e=>{const a=e.target.closest("a");if(!a)return;e.preventDefault();const n=a.getAttribute("href").slice(1);location.hash=n;route(n)});
+
+// login e início
+function show(which){["loginBox","cfgBox","app"].forEach(id=>$(id).hidden=id!==which)}
+async function start(session){
+  if(!session){show("loginBox");return}
+  show("app");$("who").textContent=session.user.email;route();await loadAll();
+  if(!window._gprt){const ch=sb.channel("gp-rt");KEYS.forEach(k=>ch.on("postgres_changes",{event:"*",schema:"public",table:T[k][0]},()=>reload(k)));ch.subscribe();window._gprt=ch}
+}
+const C=window.GP_CONFIG||{};
+if(!C.SUPABASE_URL||C.SUPABASE_URL.includes("COLE_AQUI")||!window.supabase){show("cfgBox")}
+else{
+  sb=window.supabase.createClient(C.SUPABASE_URL,C.SUPABASE_KEY);
+  $("loginForm").addEventListener("submit",async e=>{e.preventDefault();$("lErr").textContent="";$("lBtn").disabled=true;
+    const{error}=await sb.auth.signInWithPassword({email:$("lEmail").value.trim(),password:$("lPass").value});
+    $("lBtn").disabled=false;if(error)$("lErr").textContent=error.message==="Invalid login credentials"?"E-mail ou senha incorretos.":error.message});
+  $("logout").onclick=async()=>{await sb.auth.signOut()};
+  sb.auth.onAuthStateChange((ev,session)=>{if(ev==="INITIAL_SESSION"||ev==="SIGNED_IN"||ev==="SIGNED_OUT")start(session)});
+  setInterval(()=>{if(loaded&&$("drawerRoot").hidden)render()},36e5);
+}
+})();
+</script>
+</body></html>
