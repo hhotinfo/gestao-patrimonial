@@ -113,6 +113,19 @@ tfoot td{font-weight:600;background:var(--mute-soft);border-bottom:0}
 .form fieldset{grid-column:1/-1;border:1px solid var(--line);border-radius:8px;padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:0;min-width:0}
 .form legend{font-size:12px;font-weight:600;padding:0 4px;color:var(--ink)}
 .calc{grid-column:1/-1;font-family:var(--f-mono);font-size:13px;display:flex;justify-content:space-between;padding:8px 10px;background:var(--mute-soft);border-radius:6px}
+.audit{grid-column:1/-1;border-top:1px solid var(--line);padding-top:10px;display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;font-size:12px;color:var(--muted)}
+.audit b{color:var(--ink);font-weight:600}
+.audit span+.btn{margin-left:auto}
+#t_historico{min-width:920px}
+td.mud{white-space:normal;min-width:260px;max-width:440px;font-size:13px}
+.recbar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;padding:8px 12px;border:1px solid var(--accent);background:var(--accent-soft);border-radius:8px}
+.recbar span{min-width:0;overflow-wrap:anywhere}
+.loginfo{grid-column:1/-1;display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;font-size:13px}
+.loginfo dt{color:var(--muted)}.loginfo dd{margin:0;overflow-wrap:anywhere}
+.form table.chg{grid-column:1/-1;min-width:0;border:1px solid var(--line);border-radius:6px}
+.chg th,.chg td{white-space:normal;vertical-align:top;font-size:13px;overflow-wrap:anywhere}
+.chg th{cursor:default}
+.chg td.antes{color:var(--muted)}
 .linked{grid-column:1/-1;border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:6px}
 .linked h4{margin:6px 0 0;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:flex;justify-content:space-between;align-items:center;gap:8px}
 .linked .lk{grid-template-columns:minmax(0,1fr) auto auto}
@@ -163,6 +176,7 @@ td.wrap2{white-space:normal;min-width:160px;max-width:220px}
     <a href="#iptu" id="tab_iptu">IPTU<small id="n_iptu"></small></a>
     <a href="#seguros" id="tab_seguros">Seguros<small id="n_seguros"></small></a>
     <a href="#titulares" id="tab_titulares">Titulares<small id="n_titulares"></small></a>
+    <a href="#historico" id="tab_historico">Histórico</a>
   </nav>
 
   <section class="view" id="v_painel">
@@ -181,6 +195,7 @@ td.wrap2{white-space:normal;min-width:160px;max-width:220px}
   <section class="view" id="v_iptu" hidden></section>
   <section class="view" id="v_seguros" hidden></section>
   <section class="view" id="v_titulares" hidden></section>
+  <section class="view" id="v_historico" hidden></section>
 </div>
 
 <div id="drawerRoot" hidden>
@@ -237,6 +252,7 @@ const TONE={"Ativo":"ok","À venda":"warn","Vendido":"mute","Baixado":"mute","Pe
 
 const S={titulares:[],bens:[],iptu:[],seguros:[]};
 const KEYS=Object.keys(S);
+S.historico=[];
 let sb=null,cur="painel",ed=null,loaded=false,loadMsg="Carregando…";
 const by=(k,id)=>S[k].find(r=>r.id===id);
 const bem=id=>by("bens",id);
@@ -393,7 +409,7 @@ async function load(ent){
   S[ent]=data.map(r=>fromDb(ent,r));
 }
 async function loadAll(){
-  try{await Promise.all(KEYS.map(load));loaded=true}
+  try{await Promise.all(KEYS.map(load));loaded=true;try{await loadLog()}catch(e){logOk=false}}
   catch(e){loaded=false;loadMsg=e.code==="PGRST205"||e.code==="42P01"?"As tabelas deste sistema ainda não existem no Supabase. Rode o arquivo banco.sql no SQL Editor do projeto.":"Erro ao carregar: "+(e.message||e.code)}
   render();
 }
@@ -405,20 +421,103 @@ function errMsg(e,ent){
   return"Não foi possível concluir: "+(e.message||e.code);
 }
 
+// histórico de alterações: tabela gp_log, gravada pelo próprio banco a cada inclusão, alteração ou exclusão
+const LOG_ENT={gp_titulares:"titulares",gp_bens:"bens",gp_iptu:"iptu",gp_seguros:"seguros"};
+const LOG_CAD={titulares:"Titulares",bens:"Bens",iptu:"IPTU",seguros:"Seguros"};
+const ACAO_TONE={"Inclusão":"ok","Alteração":"acc","Exclusão":"bad"};
+const LOG_SKIP=["id","criado_em","origem"];
+let logOk=null,logRec=null;
+const quando=s=>{const d=new Date(s);return d.toLocaleDateString("pt-BR")+" "+d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})};
+const logDias=r=>-days(iso(new Date(r.em)));
+function colInfo(ent,col){const m=T[ent][1];for(const k in m)if(m[k]===col)return{k,f:fld(ent,k)};return null}
+function colLabel(ent,col){const i=colInfo(ent,col);return i?String(i.f.l||col).replace(/ \(R\$\)$/,"").replace(/ \(%\)$/,""):col}
+function logNomeBem(id){const r=S.historico.find(x=>x.tabela==="gp_bens"&&x.registro===id);return r?((r.depois||{}).nome||(r.antes||{}).nome||r.descricao):""}
+function fmtVal(ent,col,v){
+  if(v==null||v==="")return"(vazio)";
+  const i=colInfo(ent,col);if(!i)return String(v);const f=i.f;
+  if(f.money)return money(v);
+  if(f.date)return dBR(v);
+  if(f.ref==="titulares"){const t=by("titulares",v);return t?t.nome:"(titular excluído)"}
+  if(f.ref)return bn(v)||logNomeBem(v)||"(bem excluído)";
+  if(i.k==="perc")return pctf(+v);
+  return String(v);
+}
+function logNome(r){
+  if(r.tabela==="gp_iptu"&&/^Bem excluído/.test(r.descricao||"")){const x=r.antes||r.depois||{},n=x.bem_id&&(bn(x.bem_id)||logNomeBem(x.bem_id));if(n)return n+" · "+(x.ano||"")}
+  if(r.descricao)return r.descricao;
+  const e=LOG_ENT[r.tabela],x=e&&by(e,r.registro);
+  return x?(x.nome||x.produto||bn(x.bemId)+" · "+x.ano):"(sem nome)";
+}
+function logChanges(r){
+  const ent=LOG_ENT[r.tabela],a=r.antes||{},d=r.depois||{};if(!ent)return[];
+  const ord=c=>{const i=colInfo(ent,c);return i?F[ent].fields.findIndex(f=>f.k===i.k):999};
+  const cols=[...new Set([...Object.keys(a),...Object.keys(d)])].filter(c=>!LOG_SKIP.includes(c)).sort((x,y)=>ord(x)-ord(y));
+  return cols.map(c=>[colLabel(ent,c),r.acao==="Inclusão"?null:fmtVal(ent,c,a[c]),r.acao==="Exclusão"?null:fmtVal(ent,c,d[c])]);
+}
+function logResumo(r){
+  if(r.acao==="Inclusão")return"Registro incluído";
+  if(r.acao==="Exclusão")return"Registro excluído";
+  const ch=logChanges(r);
+  return ch.slice(0,2).map(x=>`${x[0]}: ${x[1]} → ${x[2]}`).join("; ")+(ch.length>2?` e mais ${ch.length-2}`:"");
+}
+async function loadLog(){
+  const{data,error}=await sb.from("gp_log").select("*").order("em",{ascending:false}).limit(3000);
+  if(error){logOk=false;S.historico=[];return}
+  logOk=true;S.historico=data||[];
+}
+let rtLog;function reloadLog(){clearTimeout(rtLog);rtLog=setTimeout(async()=>{try{await loadLog();if(cur==="historico")render()}catch(e){}},400)}
+V.historico={ph:"Buscar usuário, registro ou valor",sort:0,dir:-1,
+  text:r=>[r.usuario,logNome(r),LOG_CAD[LOG_ENT[r.tabela]],r.acao,logChanges(r).flat().join(" ")].join(" "),
+  filters:[{k:"usu",first:"Todos os usuários",vals:()=>uniq(S.historico.map(r=>r.usuario)),get:r=>r.usuario},
+    {k:"cad",first:"Todos os cadastros",vals:()=>Object.entries(LOG_CAD).map(([k,l])=>["gp_"+k,l]),get:r=>r.tabela},
+    {k:"acao",first:"Todas as ações",vals:()=>["Inclusão","Alteração","Exclusão"],get:r=>r.acao},
+    {k:"per",first:"Todo o período",vals:()=>[["0","Hoje"],["7","Últimos 7 dias"],["30","Últimos 30 dias"],["90","Últimos 90 dias"]],match:(r,x)=>logDias(r)<=+x}],
+  cols:[
+    {h:"Data e hora",cls:"mono",s:r=>r.em,c:r=>quando(r.em)},
+    {h:"Usuário",s:r=>lc(r.usuario),c:r=>esc(r.usuario)},
+    {h:"Ação",s:r=>r.acao,c:r=>pill(r.acao,ACAO_TONE[r.acao])},
+    {h:"Registro",cls:"nome",s:r=>lc(logNome(r)),c:r=>`${esc(logNome(r))}<small>${esc(LOG_CAD[LOG_ENT[r.tabela]]||r.tabela)}</small>`},
+    {h:"O que mudou",cls:"mud",s:r=>logResumo(r),c:r=>esc(logResumo(r))}],
+  kpis:l=>{const ex=l.filter(r=>r.acao==="Exclusão").length;return[{l:"Alterações",v:l.length,sub:"com os filtros atuais"},{l:"Hoje",v:l.filter(r=>logDias(r)===0).length},
+    {l:"Usuários",v:new Set(l.map(r=>r.usuario)).size},{l:"Exclusões",v:ex,cls:ex?"saldo":""}]},
+  empty:"Nenhuma alteração registrada ainda. A partir de agora, cada inclusão, alteração ou exclusão aparece aqui.",
+  note:"O histórico é gravado pelo banco de dados a cada inclusão, alteração ou exclusão, com o e-mail de quem fez. Ninguém consegue editá-lo nem apagá-lo pelo sistema. Clique em uma linha para ver todos os campos que mudaram. A lista mostra as 3.000 alterações mais recentes."};
+function auditHtml(ent,row){
+  if(logOk!==true)return"";
+  const l=S.historico.filter(r=>r.tabela===T[ent][0]&&r.registro===row.id);
+  if(!l.length)return'<div class="audit"><span>Sem alterações registradas desde o início do histórico.</span></div>';
+  const u=l[0],inc=l.find(r=>r.acao==="Inclusão");
+  return`<div class="audit"><span>Última alteração: <b>${esc(u.usuario)}</b>, ${quando(u.em)}</span>${inc&&inc!==u?`<span>Incluído por ${esc(inc.usuario)}, ${quando(inc.em)}</span>`:""}<button type="button" class="btn sm" id="verHist">Ver histórico (${l.length})</button></div>`;
+}
+function openLog(r){
+  if(!r)return;ed=null;
+  const ent=LOG_ENT[r.tabela],ch=logChanges(r),ainda=ent&&by(ent,r.registro);
+  window._logSel=r;
+  $("dTitle").textContent=r.acao+" em "+quando(r.em);
+  const hd=r.acao==="Inclusão"?"<th>Valor incluído</th>":r.acao==="Exclusão"?"<th>Valor excluído</th>":"<th>Antes</th><th>Depois</th>";
+  $("frm").innerHTML=`<dl class="loginfo"><dt>Usuário</dt><dd>${esc(r.usuario)}</dd><dt>Cadastro</dt><dd>${esc(LOG_CAD[ent]||r.tabela)}</dd><dt>Registro</dt><dd>${esc(logNome(r))}</dd><dt>Ação</dt><dd>${pill(r.acao,ACAO_TONE[r.acao])}</dd></dl>
+    <table class="chg"><thead><tr><th>Campo</th>${hd}</tr></thead><tbody>${ch.map(x=>`<tr><td>${esc(x[0])}</td>${x[1]!=null?`<td class="${x[2]!=null?"antes":""}">${esc(x[1])}</td>`:""}${x[2]!=null?`<td>${esc(x[2])}</td>`:""}</tr>`).join("")||'<tr><td colspan="3">Nenhum campo registrado.</td></tr>'}</tbody></table>
+    <div class="audit">${ainda?'<button type="button" class="btn sm" id="logOpen">Abrir o registro</button>':`<span>${r.acao==="Exclusão"?"Este registro foi excluído.":"Este registro não existe mais."}</span>`}<button type="button" class="btn sm" id="logRecBtn">Ver todo o histórico deste registro</button></div>`;
+  $("delBox").innerHTML="";$("save").hidden=true;$("cancel").textContent="Fechar";$("drawerRoot").hidden=false;
+}
+function showLogRec(t,id,nome){logRec={t,id,nome};closeForm();$("f_historico_per").value="";location.hash="historico";route("historico")}
+
 // montagem das telas de lista
-["bens","iptu","seguros","titulares"].forEach(k=>{const v=V[k];v.dir=1;
+["bens","iptu","seguros","titulares","historico"].forEach(k=>{const v=V[k];v.dir=v.dir||1;
   $("v_"+k).innerHTML=`${v.kpis?`<div class="kpis" id="k_${k}" aria-label="Totais"></div>`:""}
-  <div class="tools"><input id="q_${k}" type="search" placeholder="${v.ph}" aria-label="Buscar">${v.filters.map(f=>`<select id="f_${k}_${f.k}" aria-label="${f.first}"><option value="">${f.first}</option></select>`).join("")}<button class="btn primary" id="add_${k}" type="button">${v.add}</button></div>
+  <div class="tools"><input id="q_${k}" type="search" placeholder="${v.ph}" aria-label="Buscar">${v.filters.map(f=>`<select id="f_${k}_${f.k}" aria-label="${f.first}"><option value="">${f.first}</option></select>`).join("")}${v.add?`<button class="btn primary" id="add_${k}" type="button">${v.add}</button>`:""}</div>
+  ${k==="historico"?'<div class="recbar" id="rec_historico" hidden></div>':""}
   <div class="tablebox"><table id="t_${k}"><thead><tr>${v.cols.map((c,i)=>`<th data-i="${i}"${c.cls==="num"?' class="num"':""}>${c.h}</th>`).join("")}</tr></thead><tbody></tbody><tfoot></tfoot></table><div class="empty" id="e_${k}">Carregando…</div></div>
   <p class="note">${v.note}</p>`;
   const t=$("t_"+k);
   t.tHead.addEventListener("click",e=>{const th=e.target.closest("th");if(!th)return;const i=+th.dataset.i;if(v.sort===i)v.dir*=-1;else{v.sort=i;v.dir=1}render()});
-  const open=e=>{const tr=e.target.closest("tr[data-id]");if(tr)openForm(k,by(k,tr.dataset.id))};
+  const open=e=>{const tr=e.target.closest("tr[data-id]");if(!tr)return;if(k==="historico")openLog(S.historico.find(r=>String(r.id)===tr.dataset.id));else openForm(k,by(k,tr.dataset.id))};
   t.tBodies[0].addEventListener("click",open);
   t.tBodies[0].addEventListener("keydown",e=>{if(e.key==="Enter")open(e)});
   $("v_"+k).querySelector(".tools").addEventListener("input",render);
-  $("add_"+k).onclick=()=>openForm(k,null);
+  if(v.add)$("add_"+k).onclick=()=>openForm(k,null);
 });
+$("rec_historico").addEventListener("click",e=>{if(e.target.id==="recAll"){logRec=null;render()}});
 
 function fillSel(sel,vals,first){
   const h=`<option value="">${first}</option>`+vals.map(v=>{const a=Array.isArray(v)?v:[v,v];return`<option value="${esc(a[0])}">${esc(a[1])}</option>`}).join("");
@@ -430,13 +529,14 @@ function renderView(k){
   const v=V[k],t=$("t_"+k);
   v.filters.forEach(f=>fillSel($("f_"+k+"_"+f.k),f.vals(),f.first));
   const q=$("q_"+k).value.trim().toLowerCase();
-  const list=S[k].filter(r=>v.filters.every(f=>{const x=$("f_"+k+"_"+f.k).value;return!x||String(f.get(r)??"")===x})&&(!q||lc(v.text(r)).includes(q)));
+  const list=S[k].filter(r=>v.filters.every(f=>{const x=$("f_"+k+"_"+f.k).value;return!x||(f.match?f.match(r,x):String(f.get(r)??"")===x)})&&(!q||lc(v.text(r)).includes(q))&&(k!=="historico"||!logRec||(r.tabela===logRec.t&&r.registro===logRec.id)));
   const c=v.cols[v.sort];
-  list.sort((a,b)=>{const x=c.s(a),y=c.s(b);return(x>y?1:x<y?-1:0)*v.dir||(lc(a.nome||a.produto||bn(a.bemId))<lc(b.nome||b.produto||bn(b.bemId))?-1:1)});
+  list.sort((a,b)=>{const x=c.s(a),y=c.s(b);return(x>y?1:x<y?-1:0)*v.dir||(k==="historico"?b.id-a.id:(lc(a.nome||a.produto||bn(a.bemId))<lc(b.nome||b.produto||bn(b.bemId))?-1:1))});
   t.tBodies[0].innerHTML=list.map(r=>`<tr tabindex="0" data-id="${esc(r.id)}" class="${v.rowCls?v.rowCls(r):""}">${v.cols.map(c=>`<td${c.cls?` class="${c.cls}"`:""}>${c.c(r)}</td>`).join("")}</tr>`).join("");
   t.tFoot.innerHTML=v.foot&&list.length?"<tr>"+v.foot(list).map((x,i)=>`<td${v.cols[i].cls==="num"?' class="num"':""}>${x}</td>`).join("")+"</tr>":"";
   const e=$("e_"+k);e.hidden=list.length>0;
-  e.textContent=!loaded?loadMsg:S[k].length?"Nada encontrado com esses filtros.":v.empty;
+  e.textContent=!loaded?loadMsg:k==="historico"&&logOk===false?"O histórico ainda não foi instalado no banco. Rode o arquivo historico.sql no SQL Editor do Supabase.":S[k].length?"Nada encontrado com esses filtros.":v.empty;
+  if(k==="historico"){const b=$("rec_historico");b.hidden=!logRec;if(logRec)b.innerHTML=`<span>Mostrando só o histórico de <b>${esc(logRec.nome)}</b></span><button type="button" class="btn sm" id="recAll">Mostrar tudo</button>`}
   if(v.kpis)$("k_"+k).innerHTML=kpiHtml(v.kpis(list));
 }
 
@@ -470,7 +570,7 @@ function render(){
 }
 
 // navegação
-const NAMES=["painel","bens","iptu","seguros","titulares"];
+const NAMES=["painel","bens","iptu","seguros","titulares","historico"];
 function route(n){
   const h=typeof n==="string"?n:location.hash.slice(1);cur=NAMES.includes(h)?h:"painel";
   NAMES.forEach(x=>{$("v_"+x).hidden=x!==cur;const a=$("tab_"+x);if(x===cur)a.setAttribute("aria-current","page");else a.removeAttribute("aria-current")});
@@ -523,7 +623,9 @@ function openForm(ent,row,preset){
   });
   if(g)h+="</fieldset>";
   if(ent==="bens"&&row)h+=linked(row);
+  if(row)h+=auditHtml(ent,row);
   $("frm").innerHTML=h;
+  $("save").hidden=false;$("cancel").textContent="Cancelar";
   const fs=$("frm").querySelector("fieldset");
   if(ent==="iptu")fs.insertAdjacentHTML("beforeend",'<button type="button" class="btn" id="payAll" style="grid-column:1/-1">Marcar como pago (valor total)</button>');
   if(ent==="seguros")fs.insertAdjacentHTML("beforeend",'<button type="button" class="btn" id="renew" style="grid-column:1/-1">Renovar por mais 1 ano</button>');
@@ -532,7 +634,7 @@ function openForm(ent,row,preset){
   hook();$("drawerRoot").hidden=false;
   const first=$("frm").querySelector("input,select");if(first&&!row)first.focus();
 }
-function closeForm(){$("drawerRoot").hidden=true;ed=null}
+function closeForm(){$("drawerRoot").hidden=true;ed=null;window._logSel=null}
 function formData(){
   const d={};
   F[ed.ent].fields.forEach(f=>{if(f.calc)return;const s=$("i_"+f.k).value.trim();d[f.k]=f.money?num(s):f.num?(s===""&&f.def!=null?f.def:num(s)):s});
@@ -553,6 +655,8 @@ $("frm").addEventListener("input",hook);
 $("frm").addEventListener("submit",e=>{e.preventDefault();save()});
 $("frm").addEventListener("click",e=>{
   const n=e.target.closest("[data-new]"),l=e.target.closest(".lk"),id=e.target.id;
+  if(id==="verHist"){const r=ed.row;showLogRec(T[ed.ent][0],r.id,r.nome||r.produto||(bn(r.bemId)+" · "+r.ano));return}
+  if(id==="logOpen"||id==="logRecBtn"){const r=window._logSel,ent=LOG_ENT[r.tabela];if(id==="logOpen")openForm(ent,by(ent,r.registro));else showLogRec(r.tabela,r.registro,logNome(r));return}
   if(n){const b=ed.row;openForm(n.dataset.new,null,n.dataset.new==="iptu"?{bemId:b.id}:{bemId:b.id,produto:b.nome,categoria:CATS.includes(b.tipo)?b.tipo:""})}
   else if(l)openForm(l.dataset.e,by(l.dataset.e,l.dataset.id));
   else if(id==="payAll"){const d=formData();$("i_valorPag").value=brl(iTot(d));$("i_status").value="Pago";if(!$("i_dataPag").value)$("i_dataPag").value=TODAY;hook()}
@@ -578,7 +682,8 @@ async function save(){
   $("save").disabled=false;
   if(res.error){toast(errMsg(res.error,ent));return}
   toast(row?"Alterações salvas":"Registro adicionado");closeForm();
-  try{await load(ent)}catch(e){}render();
+  try{await load(ent)}catch(e){}
+  try{await loadLog()}catch(e){}render();
 }
 function askDelete(){
   const{ent,row}=ed;let msg="Excluir mesmo?";
@@ -592,18 +697,19 @@ function askDelete(){
     const{error}=await sb.from(T[ent][0]).delete().eq("id",row.id);
     if(error){toast(errMsg(error,ent));if($("delYes"))$("delYes").disabled=false;return}
     toast("Registro excluído");closeForm();
-    try{await Promise.all((ent==="bens"?["bens","iptu","seguros"]:[ent]).map(load))}catch(e){}render()};
+    try{await Promise.all((ent==="bens"?["bens","iptu","seguros"]:[ent]).map(load))}catch(e){}
+    try{await loadLog()}catch(e){}render()};
 }
 let tt;function toast(m){const t=$("toast");t.textContent=m;t.hidden=false;clearTimeout(tt);tt=setTimeout(()=>t.hidden=true,3200)}
 $("save").onclick=save;
-document.querySelector(".tabs").addEventListener("click",e=>{const a=e.target.closest("a");if(!a)return;e.preventDefault();const n=a.getAttribute("href").slice(1);location.hash=n;route(n)});
+document.querySelector(".tabs").addEventListener("click",e=>{const a=e.target.closest("a");if(!a)return;e.preventDefault();const n=a.getAttribute("href").slice(1);if(n==="historico")logRec=null;location.hash=n;route(n)});
 
 // login e início
 function show(which){["loginBox","cfgBox","app"].forEach(id=>$(id).hidden=id!==which)}
 async function start(session){
   if(!session){show("loginBox");return}
   show("app");$("who").textContent=session.user.email;route();await loadAll();
-  if(!window._gprt){const ch=sb.channel("gp-rt");KEYS.forEach(k=>ch.on("postgres_changes",{event:"*",schema:"public",table:T[k][0]},()=>reload(k)));ch.subscribe();window._gprt=ch}
+  if(!window._gprt){const ch=sb.channel("gp-rt");KEYS.forEach(k=>ch.on("postgres_changes",{event:"*",schema:"public",table:T[k][0]},()=>reload(k)));ch.on("postgres_changes",{event:"INSERT",schema:"public",table:"gp_log"},reloadLog);ch.subscribe();window._gprt=ch}
 }
 const C=window.GP_CONFIG||{};
 if(!C.SUPABASE_URL||C.SUPABASE_URL.includes("COLE_AQUI")||!window.supabase){show("cfgBox")}
