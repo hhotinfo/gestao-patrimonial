@@ -58,6 +58,9 @@ input,select,textarea,button{font:inherit;color:inherit}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--surface)}
 .btn.danger{color:var(--bad);border-color:var(--bad)}
 .btn.sm{padding:3px 9px;font-size:12px}
+.exp{display:flex;gap:6px;margin-left:auto}
+.exp .btn{padding:8px 12px}
+.exp .btn[disabled]{cursor:progress}
 .btn:focus-visible,.lk:focus-visible,.tabs a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,tr:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .btn[disabled]{opacity:.5;cursor:not-allowed}
 .tablebox{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
@@ -505,7 +508,7 @@ function showLogRec(t,id,nome){logRec={t,id,nome};closeForm();$("f_historico_per
 // montagem das telas de lista
 ["bens","iptu","seguros","titulares","historico"].forEach(k=>{const v=V[k];v.dir=v.dir||1;
   $("v_"+k).innerHTML=`${v.kpis?`<div class="kpis" id="k_${k}" aria-label="Totais"></div>`:""}
-  <div class="tools"><input id="q_${k}" type="search" placeholder="${v.ph}" aria-label="Buscar">${v.filters.map(f=>`<select id="f_${k}_${f.k}" aria-label="${f.first}"><option value="">${f.first}</option></select>`).join("")}${v.add?`<button class="btn primary" id="add_${k}" type="button">${v.add}</button>`:""}</div>
+  <div class="tools"><input id="q_${k}" type="search" placeholder="${v.ph}" aria-label="Buscar">${v.filters.map(f=>`<select id="f_${k}_${f.k}" aria-label="${f.first}"><option value="">${f.first}</option></select>`).join("")}<span class="exp"><button class="btn" id="pdf_${k}" type="button" title="Baixar em PDF o que está na lista, com a busca e os filtros atuais">PDF</button><button class="btn" id="xls_${k}" type="button" title="Baixar em Excel o que está na lista, com a busca e os filtros atuais">Excel</button></span>${v.add?`<button class="btn primary" id="add_${k}" type="button">${v.add}</button>`:""}</div>
   ${k==="historico"?'<div class="recbar" id="rec_historico" hidden></div>':""}
   <div class="tablebox"><table id="t_${k}"><thead><tr>${v.cols.map((c,i)=>`<th data-i="${i}"${c.cls==="num"?' class="num"':""}>${c.h}</th>`).join("")}</tr></thead><tbody></tbody><tfoot></tfoot></table><div class="empty" id="e_${k}">Carregando…</div></div>
   <p class="note">${v.note}</p>`;
@@ -516,6 +519,8 @@ function showLogRec(t,id,nome){logRec={t,id,nome};closeForm();$("f_historico_per
   t.tBodies[0].addEventListener("keydown",e=>{if(e.key==="Enter")open(e)});
   $("v_"+k).querySelector(".tools").addEventListener("input",render);
   if(v.add)$("add_"+k).onclick=()=>openForm(k,null);
+  $("pdf_"+k).onclick=()=>exportar(k,"pdf");
+  $("xls_"+k).onclick=()=>exportar(k,"xls");
 });
 $("rec_historico").addEventListener("click",e=>{if(e.target.id==="recAll"){logRec=null;render()}});
 
@@ -525,19 +530,145 @@ function fillSel(sel,vals,first){
 }
 function kpiHtml(list){return list.map(x=>`<div class="kpi ${x.cls||""}"><span>${x.l}</span><strong>${esc(x.v)}</strong>${x.bar!=null?`<div class="bar"><i style="width:${x.bar}%"></i></div>`:""}${x.sub?`<small>${esc(x.sub)}</small>`:""}</div>`).join("")}
 
-function renderView(k){
-  const v=V[k],t=$("t_"+k);
-  v.filters.forEach(f=>fillSel($("f_"+k+"_"+f.k),f.vals(),f.first));
-  const q=$("q_"+k).value.trim().toLowerCase();
+function viewList(k){
+  const v=V[k],q=$("q_"+k).value.trim().toLowerCase();
   const list=S[k].filter(r=>v.filters.every(f=>{const x=$("f_"+k+"_"+f.k).value;return!x||(f.match?f.match(r,x):String(f.get(r)??"")===x)})&&(!q||lc(v.text(r)).includes(q))&&(k!=="historico"||!logRec||(r.tabela===logRec.t&&r.registro===logRec.id)));
   const c=v.cols[v.sort];
   list.sort((a,b)=>{const x=c.s(a),y=c.s(b);return(x>y?1:x<y?-1:0)*v.dir||(k==="historico"?b.id-a.id:(lc(a.nome||a.produto||bn(a.bemId))<lc(b.nome||b.produto||bn(b.bemId))?-1:1))});
+  return list;
+}
+function renderView(k){
+  const v=V[k],t=$("t_"+k);
+  v.filters.forEach(f=>fillSel($("f_"+k+"_"+f.k),f.vals(),f.first));
+  const list=viewList(k);
   t.tBodies[0].innerHTML=list.map(r=>`<tr tabindex="0" data-id="${esc(r.id)}" class="${v.rowCls?v.rowCls(r):""}">${v.cols.map(c=>`<td${c.cls?` class="${c.cls}"`:""}>${c.c(r)}</td>`).join("")}</tr>`).join("");
   t.tFoot.innerHTML=v.foot&&list.length?"<tr>"+v.foot(list).map((x,i)=>`<td${v.cols[i].cls==="num"?' class="num"':""}>${x}</td>`).join("")+"</tr>":"";
   const e=$("e_"+k);e.hidden=list.length>0;
   e.textContent=!loaded?loadMsg:k==="historico"&&logOk===false?"O histórico ainda não foi instalado no banco. Rode o arquivo historico.sql no SQL Editor do Supabase.":S[k].length?"Nada encontrado com esses filtros.":v.empty;
   if(k==="historico"){const b=$("rec_historico");b.hidden=!logRec;if(logRec)b.innerHTML=`<span>Mostrando só o histórico de <b>${esc(logRec.nome)}</b></span><button type="button" class="btn sm" id="recAll">Mostrar tudo</button>`}
   if(v.kpis)$("k_"+k).innerHTML=kpiHtml(v.kpis(list));
+}
+
+// relatórios: PDF e Excel do que está na lista (busca e filtros atuais)
+function pendTxt(b){
+  const out=[],ab=S.iptu.filter(r=>r.bemId===b.id&&iSal(r)>0);
+  if(ab.length)out.push("IPTU em aberto "+money(sum(ab,iSal))+(ab.some(r=>iSt(r)==="Atrasado")?" (atrasado)":""));
+  const sg=S.seguros.filter(r=>r.bemId===b.id&&!sOff(r)),ruim=sg.find(sRuim),ren=sg.find(r=>sSit(r)==="Renovar");
+  if(ruim)out.push(sSit(ruim)==="Sem seguro"?"Sem seguro":"Seguro vencido");else if(ren)out.push("Renovar seguro até "+dBR(ren.vigFim));
+  return out.join("; ");
+}
+const bemDe=r=>bem(r.bemId)||{};
+const mudTxt=r=>r.acao!=="Alteração"?(r.acao==="Inclusão"?"Registro incluído":"Registro excluído"):logChanges(r).map(x=>`${x[0]}: ${x[1]} → ${x[2]}`).join("; ");
+const EXP={
+  bens:{titulo:"Relatório de bens",aba:"Bens",excl:r=>!ativo(r),exclCol:"Situação",exclVals:["Vendido","Baixado"],totLabel:"Total dos bens ativos",cols:[
+    {h:"Bem",v:r=>r.nome,w:52},{h:"Tipo",v:r=>r.tipo},{h:"Titular",v:r=>tn(r.titularId),w:34},{h:"Município / local",v:r=>r.local},
+    {h:"Identificação",v:r=>r.ident,pdf:false},{h:"Identificação 2",v:r=>r.ident2,pdf:false},{h:"Data de aquisição",t:"date",v:r=>r.dataAq,pdf:false},
+    {h:"Aquisição (R$)",t:"money",v:r=>num(r.vAq),tot:1},{h:"Declarado no IR (R$)",t:"money",v:r=>num(r.vIR),tot:1},{h:"Mercado (R$)",t:"money",v:r=>num(r.vMerc),tot:1},
+    {h:"Titularidade",t:"pct",v:pct},{h:"Parte do titular (R$)",t:"money",v:parte,tot:1},{h:"Situação",v:r=>r.status||"Ativo"},
+    {h:"Pendências",v:pendTxt,w:38},{h:"Observações",v:r=>r.obs,pdf:false}]},
+  iptu:{titulo:"Relatório de IPTU",aba:"IPTU",excl:iFora,exclCol:"Status",exclVals:["Isento","Cancelado"],totLabel:"Total",cols:[
+    {h:"Imóvel",v:r=>bemDe(r).nome||"Bem removido",w:46},{h:"Titular",v:r=>tn(titDe(r)),w:28},{h:"Município",v:r=>bemDe(r).local},{h:"Sequencial",v:r=>bemDe(r).ident2},
+    {h:"Exercício",t:"num",v:r=>num(r.ano)||""},{h:"Vencimento",t:"date",v:r=>r.venc},
+    {h:"IPTU (R$)",t:"money",v:r=>num(r.valor),tot:1},{h:"ITBI (R$)",t:"money",v:r=>num(r.itbi),tot:1},{h:"Taxas (R$)",t:"money",v:r=>num(r.taxas),tot:1},
+    {h:"Total (R$)",t:"money",v:iTot,tot:1},{h:"Status",v:iSt},{h:"Data do pagamento",t:"date",v:r=>r.dataPag,pdf:false},
+    {h:"Pago (R$)",t:"money",v:r=>num(r.valorPag),tot:1,todos:1},{h:"Saldo (R$)",t:"money",v:iSal,tot:1,todos:1},{h:"Observações",v:r=>r.obs,w:30}]},
+  seguros:{titulo:"Relatório de seguros",aba:"Seguros",excl:sOff,exclCol:"Situação",exclVals:["Cancelado","Transferido"],totLabel:"Total dos seguros em vigor",cols:[
+    {h:"Produto segurado",v:r=>r.produto,w:46},{h:"Bem do cadastro",v:r=>bn(r.bemId),pdf:false},{h:"Categoria",v:r=>r.categoria},{h:"Situação",v:sSit},
+    {h:"Seguradora",v:r=>r.seguradora},{h:"Corretor",v:r=>r.corretor},{h:"Apólice",v:r=>r.apolice},
+    {h:"Prêmio (R$)",t:"money",v:r=>num(r.premio),tot:1},{h:"Importância segurada (R$)",t:"money",v:r=>num(r.segurado),tot:1,pdf:false},
+    {h:"Pagamento",v:r=>r.pagamento,w:34},{h:"Início",t:"date",v:r=>r.vigIni},{h:"Fim",t:"date",v:r=>r.vigFim},{h:"Alerta de renovação",t:"date",v:r=>sOff(r)?"":alertaOf(r)},
+    {h:"Observações",v:r=>r.obs,pdf:false}]},
+  titulares:{titulo:"Relatório de titulares",aba:"Titulares",totLabel:"Total",cols:[
+    {h:"Titular",v:r=>r.nome,w:60},{h:"Tipo",v:r=>r.tipo},{h:"CPF / CNPJ",v:r=>r.doc},{h:"Bens ativos",t:"num",v:r=>bensDe(r).length,tot:1},
+    {h:"Patrimônio (R$)",t:"money",v:r=>sum(bensDe(r),parte),tot:1},{h:"IPTU em aberto (R$)",t:"money",v:r=>sum(S.iptu.filter(i=>titDe(i)===r.id),iSal),tot:1},
+    {h:"Seguros ativos",t:"num",v:segDe,tot:1},{h:"Observações",v:r=>r.obs,w:60}]},
+  historico:{titulo:"Histórico de alterações",aba:"Histórico",cols:[
+    {h:"Data e hora",t:"datetime",v:r=>r.em,w:26},{h:"Usuário",v:r=>r.usuario,w:44},{h:"Ação",v:r=>r.acao},{h:"Cadastro",v:r=>LOG_CAD[LOG_ENT[r.tabela]]||r.tabela},
+    {h:"Registro",v:logNome,w:58},{h:"O que mudou",v:mudTxt}]}
+};
+const FLAB={tipo:"Tipo",tit:"Titular",st:"Situação",ano:"Exercício",mun:"Município",cat:"Categoria",seg:"Seguradora",usu:"Usuário",cad:"Cadastro",acao:"Ação",per:"Período","iptu.st":"Status"};
+const NUMT=["money","num","pct"];
+const fmtX=(t,v)=>v==null||v===""?"":t==="money"?brl(v):t==="pct"?pctf(v):t==="date"?dBR(v):t==="datetime"?quando(v):String(v);
+function expData(k){
+  const v=V[k],E=EXP[k],list=viewList(k),f=[];
+  const q=$("q_"+k).value.trim();if(q)f.push(`Busca: "${q}"`);
+  v.filters.forEach(x=>{const s=$("f_"+k+"_"+x.k);if(s.value)f.push((FLAB[k+"."+x.k]||FLAB[x.k]||"Filtro")+": "+s.options[s.selectedIndex].text)});
+  if(k==="historico"&&logRec)f.push("Registro: "+logRec.nome);
+  const tot=c=>sum(list.filter(r=>c.todos||!E.excl||!E.excl(r)),r=>+c.v(r)||0);
+  return{...E,list,tot,hasTot:E.cols.some(c=>c.tot),filtros:f.length?f.join("  ·  "):"nenhum (todos os registros)",
+    resumo:v.kpis?v.kpis(list).map(x=>x.l+": "+x.v).join("   ·   "):"",gerado:quando(new Date().toISOString()),usuario:$("who").textContent||"",
+    arquivo:`gestao-patrimonial_${k}_${TODAY}`};
+}
+const LIBS={pdf:["https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js","https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"],
+  xls:["https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"]};
+const libP={};
+function loadScript(u){return libP[u]||(libP[u]=new Promise((ok,no)=>{const s=document.createElement("script");s.src=u;s.onload=ok;s.onerror=()=>{delete libP[u];s.remove();no(new Error("falha ao carregar "+u))};document.head.appendChild(s)}))}
+async function exportar(k,kind){
+  if(!loaded){toast("Aguarde os dados carregarem");return}
+  const b=$((kind==="pdf"?"pdf_":"xls_")+k),txt=b.textContent;b.disabled=true;b.textContent="Gerando…";
+  try{for(const u of LIBS[kind])await loadScript(u);
+    if(kind==="pdf")makePdf(k);else makeXls(k);
+    toast(kind==="pdf"?"Relatório em PDF baixado":"Planilha do Excel baixada")}
+  catch(e){console.error(e);toast("Não foi possível gerar o arquivo. Verifique a internet e tente de novo.")}
+  finally{b.disabled=false;b.textContent=txt}
+}
+function makePdf(k){
+  const X=expData(k),doc=new window.jspdf.jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+  const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight(),M=12,cols=X.cols.filter(c=>c.pdf!==false);
+  const pdfTxt=s=>String(s).replace(/→/g,"»");
+  doc.setFont("helvetica","bold");doc.setFontSize(15);doc.setTextColor(28,36,32);doc.text("Gestão Patrimonial",M,15);
+  doc.setFontSize(11.5);doc.setTextColor(31,95,74);doc.text(X.titulo,M,21.5);
+  doc.setFont("helvetica","normal");doc.setFontSize(8.5);doc.setTextColor(93,106,99);
+  doc.text(`Gerado em ${X.gerado}${X.usuario?" por "+X.usuario:""}`,W-M,15,{align:"right"});
+  doc.text(pl(X.list.length,"registro","registros"),W-M,21.5,{align:"right"});
+  let y=28;const fl=doc.splitTextToSize(pdfTxt("Filtros: "+X.filtros),W-2*M);doc.text(fl,M,y);y+=fl.length*3.9;
+  if(X.resumo){doc.setTextColor(28,36,32);const rs=doc.splitTextToSize(X.resumo,W-2*M);doc.text(rs,M,y);y+=rs.length*3.9}
+  doc.setDrawColor(221,226,220);doc.line(M,y,W-M,y);
+  const RUIM=["Atrasado","Vencido","Sem seguro","Contestado","Exclusão"],ALERTA=["Renovar","Pendente","À venda"];
+  doc.autoTable({startY:y+3,margin:{left:M,right:M,bottom:14},
+    head:[cols.map(c=>c.h)],
+    body:X.list.length?X.list.map(r=>cols.map(c=>pdfTxt(fmtX(c.t,c.v(r))))):[[{content:"Nenhum registro com esses filtros.",colSpan:cols.length}]],
+    foot:X.list.length&&X.hasTot?[cols.map((c,i)=>i===0?X.totLabel:c.tot?fmtX(c.t,X.tot(c)):"")]:undefined,showFoot:"lastPage",
+    styles:{font:"helvetica",fontSize:7.2,cellPadding:1.4,overflow:"linebreak",valign:"top",textColor:[28,36,32],lineColor:[221,226,220],lineWidth:0.1},
+    headStyles:{fillColor:[31,95,74],textColor:255,fontStyle:"bold",fontSize:7},
+    footStyles:{fillColor:[236,238,235],textColor:[28,36,32],fontStyle:"bold"},
+    alternateRowStyles:{fillColor:[247,248,246]},
+    columnStyles:Object.fromEntries(cols.map((c,i)=>[i,c.w?{cellWidth:c.w}:{}])),
+    didParseCell:d=>{const c=cols[d.column.index];if(!c)return;if(NUMT.includes(c.t))d.cell.styles.halign="right";
+      if(d.section==="body"&&X.list.length){const t=d.cell.raw;if(RUIM.includes(t))d.cell.styles.textColor=[179,38,30];else if(ALERTA.includes(t))d.cell.styles.textColor=[150,96,10]}},
+    didDrawPage:()=>{doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(93,106,99);
+      doc.text("Gestão Patrimonial  ·  "+X.titulo,M,H-7);doc.text("Página "+doc.internal.getNumberOfPages()+" de {total}",W-M-12,H-7)}});
+  doc.putTotalPages("{total}");
+  doc.save(X.arquivo+".pdf");
+}
+function makeXls(k){
+  const X=expData(k),XL=window.XLSX,cols=X.cols,n=X.list.length,H0=6;
+  const ser=s=>{if(!s)return null;const[y,m,d]=String(s).slice(0,10).split("-").map(Number);return(Date.UTC(y,m-1,d)-Date.UTC(1899,11,30))/864e5};
+  const serDT=s=>{const d=new Date(s);return(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate(),d.getHours(),d.getMinutes())-Date.UTC(1899,11,30))/864e5};
+  const cell=(t,v)=>{if(v==null||v==="")return null;
+    if(t==="money")return{t:"n",v:+v,z:"#,##0.00"};if(t==="num")return{t:"n",v:+v,z:"0"};if(t==="pct")return{t:"n",v:+v/100,z:"0%"};
+    if(t==="date")return{t:"n",v:ser(v),z:"dd/mm/yyyy"};if(t==="datetime")return{t:"n",v:serDT(v),z:"dd/mm/yyyy hh:mm"};return{t:"s",v:String(v)}};
+  const ws={},L=XL.utils.encode_col,put=(r,c,o)=>{if(o)ws[L(c)+(r+1)]=o};
+  put(0,0,{t:"s",v:"Gestão Patrimonial · "+X.titulo});
+  put(1,0,{t:"s",v:`Gerado em ${X.gerado}${X.usuario?" por "+X.usuario:""} · ${pl(n,"registro","registros")}`});
+  put(2,0,{t:"s",v:"Filtros: "+X.filtros});
+  if(X.resumo)put(3,0,{t:"s",v:X.resumo});
+  cols.forEach((c,j)=>put(H0-1,j,{t:"s",v:c.h}));
+  X.list.forEach((r,i)=>cols.forEach((c,j)=>put(H0+i,j,cell(c.t,c.v(r)))));
+  const last=H0+n;
+  if(n&&X.hasTot){
+    put(last,0,{t:"s",v:X.totLabel});
+    const ec=X.exclCol&&cols.findIndex(c=>c.h===X.exclCol);
+    cols.forEach((c,j)=>{if(!c.tot)return;const rg=`${L(j)}${H0+1}:${L(j)}${last}`;
+      const f=X.excl&&!c.todos&&ec>=0?`SUMIFS(${rg},${X.exclVals.map(x=>`${L(ec)}${H0+1}:${L(ec)}${last},"<>${x}"`).join(",")})`:`SUBTOTAL(9,${rg})`;
+      ws[L(j)+(last+1)]={t:"n",v:X.tot(c),f,z:c.t==="money"?"#,##0.00":"0"}});
+  }
+  ws["!ref"]=XL.utils.encode_range({s:{r:0,c:0},e:{r:Math.max(last,H0),c:cols.length-1}});
+  ws["!autofilter"]={ref:`A${H0}:${L(cols.length-1)}${Math.max(last,H0)}`};
+  ws["!cols"]=cols.map(c=>{const m=Math.max(c.h.length,...X.list.slice(0,300).map(r=>fmtX(c.t,c.v(r)).length));return{wch:Math.min(Math.max(m+2,10),c.h==="O que mudou"||c.h==="Pendências"?70:48)}});
+  const wb=XL.utils.book_new();XL.utils.book_append_sheet(wb,ws,X.aba);
+  wb.Props={Title:"Gestão Patrimonial · "+X.titulo};
+  XL.writeFile(wb,X.arquivo+".xlsx");
 }
 
 function group(el,key,label){
